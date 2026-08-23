@@ -1,0 +1,16 @@
+{
+  "name": "@lotus-booking/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@lotus-booking/booking-core": "workspace:*",
+    "@lotus-booking/channel-calendar": "workspace:*",
+    "@lotus-booking/channel-ical": "workspace:*",
+    "@lotus-booking/database-postgres": "workspace:*",
+    "@lotus-booking/notifications": "workspace:*",
+    "@lotus-booking/payments": "workspace:*",
+    "@lotus-booking/payments-stripe": "workspace:*",
+    "@lotus-booking/sdk-typescript": "workspace:*"
+  }
+}

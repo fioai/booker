@@ -1,0 +1,9 @@
+{
+  "name": "@lotus-booking/admin",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@lotus-booking/sdk-typescript": "workspace:*"
+  }
+}

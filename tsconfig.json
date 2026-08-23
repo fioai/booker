@@ -1,0 +1,16 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/booking-core" },
+    { "path": "./packages/payments" },
+    { "path": "./packages/channel-calendar" },
+    { "path": "./packages/channel-ical" },
+    { "path": "./packages/database-postgres" },
+    { "path": "./packages/notifications" },
+    { "path": "./packages/payments-stripe" },
+    { "path": "./packages/sdk-typescript" },
+    { "path": "./packages/test-support" },
+    { "path": "./apps/api" },
+    { "path": "./apps/admin" }
+  ]
+}
