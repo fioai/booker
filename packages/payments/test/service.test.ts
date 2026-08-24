@@ -1,15 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
-  createPaymentCheckoutServiceV1,
+  createPaymentCheckoutService,
   type MoneyMinor,
-  type PaymentCheckoutPreparationV1,
-  type PaymentCheckoutRecordV1,
-  type PaymentCheckoutStoreV1,
+  type PaymentCheckoutPreparation,
+  type PaymentCheckoutRecord,
+  type PaymentCheckoutStore,
   type PaymentProvider,
 } from '../src/index.js';
 
-const prepared: PaymentCheckoutPreparationV1 = {
+const prepared: PaymentCheckoutPreparation = {
   checkoutId: 'checkout-a',
   providerName: 'stripe',
   providerAccountId: 'acct_test_001',
@@ -36,8 +36,8 @@ const session = {
 
 describe('provider-neutral payment checkout service', () => {
   it('starts checkout only from store-prepared server context and attaches the returned session', async () => {
-    const attach = vi.fn(async () => ({}) as PaymentCheckoutRecordV1);
-    const store: PaymentCheckoutStoreV1 = {
+    const attach = vi.fn(async () => ({}) as PaymentCheckoutRecord);
+    const store: PaymentCheckoutStore = {
       prepareCheckout: vi.fn(async () => prepared),
       attachProviderSession: attach,
       processWebhookEvent: vi.fn(async () => ({ status: 'processed' as const, payment: null })),
@@ -50,7 +50,7 @@ describe('provider-neutral payment checkout service', () => {
         return session;
       }),
     };
-    const service = createPaymentCheckoutServiceV1({ store, provider });
+    const service = createPaymentCheckoutService({ store, provider });
 
     await expect(
       service.startCheckout({ organizationId: 'org-a' }, 'property-a', 'request-a'),
@@ -75,9 +75,9 @@ describe('provider-neutral payment checkout service', () => {
       status: 'duplicate' as const,
       payment: null,
     }));
-    const store: PaymentCheckoutStoreV1 = {
+    const store: PaymentCheckoutStore = {
       prepareCheckout: vi.fn(async () => prepared),
-      attachProviderSession: vi.fn(async () => ({}) as PaymentCheckoutRecordV1),
+      attachProviderSession: vi.fn(async () => ({}) as PaymentCheckoutRecord),
       processWebhookEvent,
     };
     const event = { providerName: 'stripe', providerEventId: 'evt_a' } as never;
@@ -87,7 +87,7 @@ describe('provider-neutral payment checkout service', () => {
       createCheckoutSession: vi.fn(async () => session),
       verifyWebhook: vi.fn(() => event),
     };
-    const service = createPaymentCheckoutServiceV1({ store, provider });
+    const service = createPaymentCheckoutService({ store, provider });
 
     await expect(
       service.handleWebhook(new Uint8Array([1, 2]), 't=1,v1=test'),

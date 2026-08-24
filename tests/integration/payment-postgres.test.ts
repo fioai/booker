@@ -3,8 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { sampleBungalowFixture } from '../../packages/booking-core/test/property-fixtures.js';
-import type { MoneyMinor, PaymentWebhookEventV1 } from '../../packages/payments/src/index.js';
+import { sampleBungalowFixture } from '../../packages/booking-core/test/property/fixtures.js';
+import type { MoneyMinor, PaymentWebhookEvent } from '../../packages/payments/src/index.js';
 import {
   createOrganizationRepository,
   createPostgresBookingRequestRepository,
@@ -13,24 +13,24 @@ import {
   createPostgresPropertyRepository,
   createRateRepository,
   runMigrations,
-  type PaymentCheckoutRepositoryV1,
+  type PaymentCheckoutRepository,
   type PostgresDatabasePort,
 } from '../../packages/database-postgres/src/index.js';
 
 const connectionString =
   process.env['DATABASE_URL'] ??
-  'postgresql://lotus_booking_local:local-only-placeholder@127.0.0.1:5432/lotus_booking_local';
+  'postgresql://booking_engine_local:local-only-placeholder@127.0.0.1:5432/booking_engine_local';
 const runId = randomUUID().replaceAll('-', '').slice(0, 12);
 const integrationSchema = `payment_test_${runId}`;
 const table = (name: string): string => `"${integrationSchema}"."${name}"`;
 
 interface SeededPaymentCheckout {
-  readonly payments: PaymentCheckoutRepositoryV1;
+  readonly payments: PaymentCheckoutRepository;
   readonly scope: { readonly organizationId: string };
   readonly propertyId: string;
   readonly requestId: string;
   readonly holdId: string;
-  readonly prepared: Awaited<ReturnType<PaymentCheckoutRepositoryV1['prepareCheckout']>>;
+  readonly prepared: Awaited<ReturnType<PaymentCheckoutRepository['prepareCheckout']>>;
   readonly session: {
     readonly providerName: 'stripe';
     readonly providerSessionId: string;
@@ -109,8 +109,8 @@ async function seedAttachedCheckout(
 function webhookFor(
   seeded: SeededPaymentCheckout,
   eventId: string,
-  overrides: Partial<PaymentWebhookEventV1> = {},
-): PaymentWebhookEventV1 {
+  overrides: Partial<PaymentWebhookEvent> = {},
+): PaymentWebhookEvent {
   return {
     providerName: 'stripe',
     providerEventId: eventId,
@@ -360,7 +360,7 @@ describe('payment checkout persistence against real PostgreSQL', () => {
       expiresAt: prepared.request.checkoutExpiresAt,
     };
     await payments.attachProviderSession(scope, propertyId, prepared.checkoutId, session);
-    const event: PaymentWebhookEventV1 = {
+    const event: PaymentWebhookEvent = {
       providerName: 'stripe',
       providerEventId: 'evt_test_event_001',
       providerAccountId: 'acct_test_001',

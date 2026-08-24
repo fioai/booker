@@ -1,14 +1,14 @@
-export interface SyncHealthErrorV1 {
+export interface SyncHealthError {
   readonly code: string;
   readonly message: string;
 }
 
-export interface SyncHealthViewV1 {
+export interface SyncHealthView {
   readonly sourceId: string;
   readonly lastAttemptAt: string | null;
   readonly lastSuccessAt: string | null;
   readonly stale: boolean;
-  readonly error: SyncHealthErrorV1 | null;
+  readonly error: SyncHealthError | null;
 }
 
 const SAFE_ERROR_MESSAGES: Readonly<Record<string, string>> = Object.freeze({
@@ -69,7 +69,7 @@ function escapeHtml(value: string): string {
   });
 }
 
-function safeError(error: SyncHealthErrorV1 | null): { code: string; message: string } | null {
+function safeError(error: SyncHealthError | null): { code: string; message: string } | null {
   if (error === null) {
     return null;
   }
@@ -83,7 +83,7 @@ function safeTimestamp(value: string | null): string {
   return value !== null && SAFE_TIMESTAMP.test(value) ? value : 'Never';
 }
 
-export function renderSyncHealthV1(health: SyncHealthViewV1): string {
+export function renderSyncHealth(health: SyncHealthView): string {
   const error = safeError(health.error);
   const needsAttention = health.stale || error !== null;
   const title = needsAttention ? 'Sync needs attention' : 'Sync healthy';
@@ -98,4 +98,4 @@ export function renderSyncHealthV1(health: SyncHealthViewV1): string {
   return `<section data-sync-health="${needsAttention ? 'attention' : 'healthy'}" aria-live="polite"><h2>${title}</h2><p>${escapeHtml(sourceId)}: ${state}</p><p>Last attempt: ${escapeHtml(lastAttempt)}</p><p>Last successful sync: ${escapeHtml(lastSuccess)}</p>${errorMarkup}</section>`;
 }
 
-export const SyncHealth = renderSyncHealthV1;
+export const SyncHealth = renderSyncHealth;

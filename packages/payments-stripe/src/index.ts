@@ -5,9 +5,9 @@ import type {
   CheckoutSession,
   MoneyMinor,
   PaymentProvider,
-  PaymentWebhookEventV1,
-} from '@lotus-booking/payments';
-import { createPaymentCheckoutRequestV1 } from '@lotus-booking/payments';
+  PaymentWebhookEvent,
+} from '@booking-engine/payments';
+import { createPaymentCheckoutRequest } from '@booking-engine/payments';
 
 const DEFAULT_MAX_BODY_BYTES = 262_144;
 const MAX_ALLOWED_BODY_BYTES = 1_048_576;
@@ -31,7 +31,7 @@ function hasControlCharacters(value: string): boolean {
   return false;
 }
 
-export type StripeWebhookErrorCodeV1 =
+export type StripeWebhookErrorCode =
   | 'invalid_configuration'
   | 'body_too_large'
   | 'malformed_signature'
@@ -41,17 +41,17 @@ export type StripeWebhookErrorCodeV1 =
   | 'unsupported_event'
   | 'account_mismatch';
 
-export class StripeWebhookErrorV1 extends Error {
-  readonly code: StripeWebhookErrorCodeV1;
+export class StripeWebhookError extends Error {
+  readonly code: StripeWebhookErrorCode;
 
-  constructor(code: StripeWebhookErrorCodeV1, message: string) {
+  constructor(code: StripeWebhookErrorCode, message: string) {
     super(message);
-    this.name = 'StripeWebhookErrorV1';
+    this.name = 'StripeWebhookError';
     this.code = code;
   }
 }
 
-export interface StripeCheckoutAdapterOptionsV1 {
+export interface StripeCheckoutAdapterOptions {
   readonly mode: 'test';
   readonly accountId: string;
   readonly webhookSecret: string;
@@ -62,24 +62,21 @@ export interface StripeCheckoutAdapterOptionsV1 {
   readonly clock?: () => Date;
 }
 
-export interface StripeSignatureVerificationOptionsV1 {
+export interface StripeSignatureVerificationOptions {
   readonly now?: Date;
   readonly toleranceSeconds?: number;
   readonly maxBodyBytes?: number;
 }
 
-export interface StripeSignatureVerificationResultV1 {
+export interface StripeSignatureVerificationResult {
   readonly timestamp: number;
 }
 
-export interface StripePaymentProviderV1 extends PaymentProvider {
+export interface StripePaymentProvider extends PaymentProvider {
   readonly providerName: 'stripe';
   readonly providerAccountId: string;
-  verifyWebhook(rawBody: Uint8Array | string, signatureHeader: string): PaymentWebhookEventV1;
+  verifyWebhook(rawBody: Uint8Array | string, signatureHeader: string): PaymentWebhookEvent;
 }
-
-/** Backward-compatible name for the provider boundary. */
-export type StripePaymentProvider = StripePaymentProviderV1;
 
 function bodyBytes(rawBody: Uint8Array | string): Uint8Array {
   return typeof rawBody === 'string' ? Buffer.from(rawBody, 'utf8') : new Uint8Array(rawBody);
@@ -88,7 +85,7 @@ function bodyBytes(rawBody: Uint8Array | string): Uint8Array {
 function boundedBodyBytes(rawBody: Uint8Array | string, maxBodyBytes: number): Uint8Array {
   const body = bodyBytes(rawBody);
   if (body.byteLength > maxBodyBytes) {
-    throw new StripeWebhookErrorV1(
+    throw new StripeWebhookError(
       'body_too_large',
       'Stripe webhook body exceeded the configured bound.',
     );
@@ -98,12 +95,12 @@ function boundedBodyBytes(rawBody: Uint8Array | string, maxBodyBytes: number): U
 
 function validateBoundedInteger(value: number, maximum: number, message: string): number {
   if (!Number.isSafeInteger(value) || value < 1 || value > maximum) {
-    throw new StripeWebhookErrorV1('invalid_configuration', message);
+    throw new StripeWebhookError('invalid_configuration', message);
   }
   return value;
 }
 
-function validateAdapterOptions(options: StripeCheckoutAdapterOptionsV1): {
+function validateAdapterOptions(options: StripeCheckoutAdapterOptions): {
   readonly accountId: string;
   readonly webhookSecret: string;
   readonly maxBodyBytes: number;
@@ -111,13 +108,13 @@ function validateAdapterOptions(options: StripeCheckoutAdapterOptionsV1): {
   readonly clock: () => Date;
 } {
   if (options.mode !== 'test') {
-    throw new StripeWebhookErrorV1(
+    throw new StripeWebhookError(
       'invalid_configuration',
       'Stripe payment adapter is restricted to test mode.',
     );
   }
   if (typeof options.accountId !== 'string' || !ACCOUNT_PATTERN.test(options.accountId)) {
-    throw new StripeWebhookErrorV1(
+    throw new StripeWebhookError(
       'invalid_configuration',
       'Stripe account configuration is invalid.',
     );
@@ -128,13 +125,13 @@ function validateAdapterOptions(options: StripeCheckoutAdapterOptionsV1): {
     options.webhookSecret.length > 256 ||
     hasControlCharacters(options.webhookSecret)
   ) {
-    throw new StripeWebhookErrorV1(
+    throw new StripeWebhookError(
       'invalid_configuration',
       'Stripe webhook configuration is invalid.',
     );
   }
   if (options.secretKey !== undefined && !options.secretKey.startsWith('sk_test_')) {
-    throw new StripeWebhookErrorV1(
+    throw new StripeWebhookError(
       'invalid_configuration',
       'Stripe payment adapter is restricted to test mode.',
     );
@@ -164,30 +161,27 @@ function parseSignatureHeader(signatureHeader: string): {
   readonly digests: readonly string[];
 } {
   if (typeof signatureHeader !== 'string' || signatureHeader.length === 0) {
-    throw new StripeWebhookErrorV1('malformed_signature', 'Stripe webhook signature is malformed.');
+    throw new StripeWebhookError('malformed_signature', 'Stripe webhook signature is malformed.');
   }
   if (signatureHeader.length > MAX_SIGNATURE_HEADER_LENGTH) {
-    throw new StripeWebhookErrorV1('malformed_signature', 'Stripe webhook signature is malformed.');
+    throw new StripeWebhookError('malformed_signature', 'Stripe webhook signature is malformed.');
   }
   let timestamp: number | undefined;
   const digests: string[] = [];
   const fields = signatureHeader.split(',');
   if (fields.length > 16) {
-    throw new StripeWebhookErrorV1('malformed_signature', 'Stripe webhook signature is malformed.');
+    throw new StripeWebhookError('malformed_signature', 'Stripe webhook signature is malformed.');
   }
   for (const field of fields) {
     const separator = field.indexOf('=');
     if (separator <= 0 || separator === field.length - 1) {
-      throw new StripeWebhookErrorV1(
-        'malformed_signature',
-        'Stripe webhook signature is malformed.',
-      );
+      throw new StripeWebhookError('malformed_signature', 'Stripe webhook signature is malformed.');
     }
     const name = field.slice(0, separator).trim();
     const value = field.slice(separator + 1).trim();
     if (name === 't') {
       if (timestamp !== undefined || !/^\d{1,12}$/u.test(value)) {
-        throw new StripeWebhookErrorV1(
+        throw new StripeWebhookError(
           'malformed_signature',
           'Stripe webhook signature is malformed.',
         );
@@ -195,7 +189,7 @@ function parseSignatureHeader(signatureHeader: string): {
       timestamp = Number(value);
     } else if (name === 'v1') {
       if (!/^[a-f0-9]{64}$/u.test(value) || digests.length >= 8) {
-        throw new StripeWebhookErrorV1(
+        throw new StripeWebhookError(
           'malformed_signature',
           'Stripe webhook signature is malformed.',
         );
@@ -204,7 +198,7 @@ function parseSignatureHeader(signatureHeader: string): {
     }
   }
   if (timestamp === undefined || digests.length === 0) {
-    throw new StripeWebhookErrorV1('malformed_signature', 'Stripe webhook signature is malformed.');
+    throw new StripeWebhookError('malformed_signature', 'Stripe webhook signature is malformed.');
   }
   return { timestamp, digests };
 }
@@ -217,12 +211,12 @@ function isEqualDigest(expected: string, candidate: string): boolean {
   );
 }
 
-export function verifyStripeWebhookSignatureV1(
+export function verifyStripeWebhookSignature(
   rawBody: Uint8Array | string,
   signatureHeader: string,
   webhookSecret: string,
-  options: StripeSignatureVerificationOptionsV1 = {},
-): StripeSignatureVerificationResultV1 {
+  options: StripeSignatureVerificationOptions = {},
+): StripeSignatureVerificationResult {
   const maxBodyBytes = options.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES;
   const toleranceSeconds = options.toleranceSeconds ?? DEFAULT_TIMESTAMP_TOLERANCE_SECONDS;
   if (
@@ -233,12 +227,12 @@ export function verifyStripeWebhookSignatureV1(
     toleranceSeconds < 1 ||
     toleranceSeconds > MAX_TIMESTAMP_TOLERANCE_SECONDS
   ) {
-    throw new StripeWebhookErrorV1('invalid_configuration', 'Stripe webhook bounds are invalid.');
+    throw new StripeWebhookError('invalid_configuration', 'Stripe webhook bounds are invalid.');
   }
   const body = boundedBodyBytes(rawBody, maxBodyBytes);
   const parsed = parseSignatureHeader(signatureHeader);
   if (typeof webhookSecret !== 'string' || webhookSecret.length === 0) {
-    throw new StripeWebhookErrorV1(
+    throw new StripeWebhookError(
       'invalid_configuration',
       'Stripe webhook configuration is invalid.',
     );
@@ -246,7 +240,7 @@ export function verifyStripeWebhookSignatureV1(
   const now = options.now ?? new Date();
   const nowSeconds = Math.floor(now.getTime() / 1000);
   if (!Number.isFinite(nowSeconds) || Math.abs(nowSeconds - parsed.timestamp) > toleranceSeconds) {
-    throw new StripeWebhookErrorV1(
+    throw new StripeWebhookError(
       'stale_signature',
       'Stripe webhook signature is outside the time bound.',
     );
@@ -257,7 +251,7 @@ export function verifyStripeWebhookSignatureV1(
   ]);
   const expected = createHmac('sha256', webhookSecret).update(signedPayload).digest('hex');
   if (!parsed.digests.some((digest) => isEqualDigest(expected, digest))) {
-    throw new StripeWebhookErrorV1('invalid_signature', 'Stripe webhook signature is invalid.');
+    throw new StripeWebhookError('invalid_signature', 'Stripe webhook signature is invalid.');
   }
   return { timestamp: parsed.timestamp };
 }
@@ -273,7 +267,7 @@ function stringField(value: unknown, field: string, pattern: RegExp, maxLength: 
     value.length > maxLength ||
     !pattern.test(value)
   ) {
-    throw new StripeWebhookErrorV1('invalid_payload', `Stripe webhook ${field} is invalid.`);
+    throw new StripeWebhookError('invalid_payload', `Stripe webhook ${field} is invalid.`);
   }
   return value;
 }
@@ -289,14 +283,14 @@ function amountField(value: unknown): MoneyMinor {
     value < 0 ||
     value > 1_000_000_000
   ) {
-    throw new StripeWebhookErrorV1('invalid_payload', 'Stripe webhook amount is invalid.');
+    throw new StripeWebhookError('invalid_payload', 'Stripe webhook amount is invalid.');
   }
   return value as MoneyMinor;
 }
 
-function metadataFields(value: unknown): PaymentWebhookEventV1['metadata'] {
+function metadataFields(value: unknown): PaymentWebhookEvent['metadata'] {
   if (!record(value)) {
-    throw new StripeWebhookErrorV1('invalid_payload', 'Stripe webhook metadata is invalid.');
+    throw new StripeWebhookError('invalid_payload', 'Stripe webhook metadata is invalid.');
   }
   return {
     organizationId: identifierField(value['organization_id'], 'metadata'),
@@ -309,7 +303,7 @@ function metadataFields(value: unknown): PaymentWebhookEventV1['metadata'] {
 
 function eventObject(value: unknown): Record<string, unknown> {
   if (!record(value) || !record(value['data']) || !record(value['data']['object'])) {
-    throw new StripeWebhookErrorV1('invalid_payload', 'Stripe webhook payload is invalid.');
+    throw new StripeWebhookError('invalid_payload', 'Stripe webhook payload is invalid.');
   }
   return value['data']['object'];
 }
@@ -325,7 +319,7 @@ function eventType(value: unknown): 'succeeded' | 'failed' | 'expired' {
   ) {
     return value === 'checkout.session.expired' ? 'expired' : 'failed';
   }
-  throw new StripeWebhookErrorV1('unsupported_event', 'Stripe webhook event type is unsupported.');
+  throw new StripeWebhookError('unsupported_event', 'Stripe webhook event type is unsupported.');
 }
 
 function eventCreated(value: unknown): string {
@@ -335,29 +329,29 @@ function eventCreated(value: unknown): string {
     value < 0 ||
     value > 4_102_444_800
   ) {
-    throw new StripeWebhookErrorV1('invalid_payload', 'Stripe webhook timestamp is invalid.');
+    throw new StripeWebhookError('invalid_payload', 'Stripe webhook timestamp is invalid.');
   }
   const created = new Date(value * 1000);
   return created.toISOString();
 }
 
-function parseWebhookEvent(rawBody: Uint8Array, expectedAccountId: string): PaymentWebhookEventV1 {
+function parseWebhookEvent(rawBody: Uint8Array, expectedAccountId: string): PaymentWebhookEvent {
   let parsed: unknown;
   try {
     const text = new TextDecoder('utf-8', { fatal: true }).decode(rawBody);
     parsed = JSON.parse(text) as unknown;
   } catch {
-    throw new StripeWebhookErrorV1('invalid_payload', 'Stripe webhook payload is invalid.');
+    throw new StripeWebhookError('invalid_payload', 'Stripe webhook payload is invalid.');
   }
   if (!record(parsed)) {
-    throw new StripeWebhookErrorV1('invalid_payload', 'Stripe webhook payload is invalid.');
+    throw new StripeWebhookError('invalid_payload', 'Stripe webhook payload is invalid.');
   }
   const providerAccountId = parsed['account'] ?? expectedAccountId;
   if (typeof providerAccountId !== 'string' || providerAccountId !== expectedAccountId) {
-    throw new StripeWebhookErrorV1('account_mismatch', 'Stripe webhook account does not match.');
+    throw new StripeWebhookError('account_mismatch', 'Stripe webhook account does not match.');
   }
   if (parsed['livemode'] === true) {
-    throw new StripeWebhookErrorV1(
+    throw new StripeWebhookError(
       'invalid_payload',
       'Stripe webhook is outside the test mode adapter bound.',
     );
@@ -382,10 +376,10 @@ function parseWebhookEvent(rawBody: Uint8Array, expectedAccountId: string): Paym
   const amountValue = object['amount_total'] ?? object['amount_received'] ?? object['amount'];
   const currency = object['currency'];
   if (typeof currency !== 'string' || !/^[a-zA-Z]{3}$/u.test(currency)) {
-    throw new StripeWebhookErrorV1('invalid_payload', 'Stripe webhook currency is invalid.');
+    throw new StripeWebhookError('invalid_payload', 'Stripe webhook currency is invalid.');
   }
   if (parsed['type'] === 'checkout.session.completed' && object['payment_status'] !== 'paid') {
-    throw new StripeWebhookErrorV1('invalid_payload', 'Stripe Checkout payment is not paid.');
+    throw new StripeWebhookError('invalid_payload', 'Stripe Checkout payment is not paid.');
   }
   return Object.freeze({
     providerName: 'stripe',
@@ -401,17 +395,17 @@ function parseWebhookEvent(rawBody: Uint8Array, expectedAccountId: string): Paym
   });
 }
 
-export function createStripeCheckoutAdapterV1(
-  options: StripeCheckoutAdapterOptionsV1,
-): StripePaymentProviderV1 {
+export function createStripeCheckoutAdapter(
+  options: StripeCheckoutAdapterOptions,
+): StripePaymentProvider {
   const validated = validateAdapterOptions(options);
   return {
     providerName: 'stripe',
     providerAccountId: validated.accountId,
     async createCheckoutSession(request: CheckoutRequest): Promise<CheckoutSession> {
-      const canonical = createPaymentCheckoutRequestV1(request);
+      const canonical = createPaymentCheckoutRequest(request);
       if (!canonical.ok) {
-        throw new StripeWebhookErrorV1('invalid_payload', 'Stripe checkout request is invalid.');
+        throw new StripeWebhookError('invalid_payload', 'Stripe checkout request is invalid.');
       }
       const providerSessionId = `cs_test_${createHash('sha256')
         .update(JSON.stringify(canonical.value))
@@ -424,9 +418,9 @@ export function createStripeCheckoutAdapterV1(
         expiresAt: canonical.value.checkoutExpiresAt,
       });
     },
-    verifyWebhook(rawBody, signatureHeader): PaymentWebhookEventV1 {
+    verifyWebhook(rawBody, signatureHeader): PaymentWebhookEvent {
       const body = boundedBodyBytes(rawBody, validated.maxBodyBytes);
-      verifyStripeWebhookSignatureV1(body, signatureHeader, validated.webhookSecret, {
+      verifyStripeWebhookSignature(body, signatureHeader, validated.webhookSecret, {
         now: validated.clock(),
         toleranceSeconds: validated.timestampToleranceSeconds,
         maxBodyBytes: validated.maxBodyBytes,
@@ -436,4 +430,4 @@ export function createStripeCheckoutAdapterV1(
   };
 }
 
-export const createStripeTestCheckoutAdapterV1 = createStripeCheckoutAdapterV1;
+export const createStripeTestCheckoutAdapter = createStripeCheckoutAdapter;

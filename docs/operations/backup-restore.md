@@ -16,16 +16,16 @@ When pg_dump and pg_restore are installed, set BACKUP_USE_HOST_TOOLS=true.
 Otherwise the script runs the PostgreSQL tools inside the selected Compose service:
 
     BACKUP_POSTGRES_SERVICE=postgres
-    COMPOSE_PROJECT_NAME=lotus-booking-hardening
+    COMPOSE_PROJECT_NAME=booking-engine-hardening
     corepack.cmd pnpm backup:restore
 
 The script:
 
 1. Connects to the source database without printing DATABASE_URL.
-2. Creates a fresh database with a hard-coded lotus*restore* prefix.
+2. Creates a fresh database with a hard-coded booking-engine*restore* prefix.
 3. Runs a custom-format pg_dump from the source.
 4. Streams that archive to pg_restore in the separate empty database.
-5. Compares row counts across all Lotus tables and verifies the availability
+5. Compares row counts across all Booking Engine tables and verifies the availability
    exclusion constraint, no active overlap, and foreign-key-backed request
    references.
 6. Removes only the temporary database and temporary archive.
@@ -42,18 +42,18 @@ rehearsal with encrypted off-host backups.
 
 PowerShell:
 
-    $env:LOTUS_ENV='local'
-    $env:DATABASE_URL='postgresql://lotus_booking_local:local-only-placeholder@127.0.0.1:15432/lotus_booking_local'
+    $env:BOOKING_ENGINE_ENV='local'
+    $env:DATABASE_URL='postgresql://booking_engine_local:local-only-placeholder@127.0.0.1:15432/booking_engine_local'
     $env:DATABASE_SCHEMA='public'
-    $env:COMPOSE_PROJECT_NAME='lotus-booking-hardening'
+    $env:COMPOSE_PROJECT_NAME='booking-engine-hardening'
     corepack.cmd pnpm backup:restore
 
 Git Bash:
 
-    export LOTUS_ENV=local
-    export DATABASE_URL='postgresql://lotus_booking_local:local-only-placeholder@127.0.0.1:15432/lotus_booking_local'
+    export BOOKING_ENGINE_ENV=local
+    export DATABASE_URL='postgresql://booking_engine_local:local-only-placeholder@127.0.0.1:15432/booking_engine_local'
     export DATABASE_SCHEMA=public
-    export COMPOSE_PROJECT_NAME=lotus-booking-hardening
+    export COMPOSE_PROJECT_NAME=booking-engine-hardening
     corepack.cmd pnpm backup:restore
 
 Use corepack.cmd in Git Bash so MSYS does not rewrite a path passed to the

@@ -24,17 +24,17 @@ import {
   type PostgresDatabasePort,
   type PropertyRepository,
 } from '../../packages/database-postgres/src/index.js';
-import type { PropertyConfigurationInputV1 } from '../../packages/booking-core/src/index.js';
+import type { PropertyConfigurationInput } from '../../packages/booking-core/src/index.js';
 
 const connectionString =
   process.env['DATABASE_URL'] ??
-  'postgresql://lotus_booking_local:local-only-placeholder@127.0.0.1:5432/lotus_booking_local';
+  'postgresql://booking_engine_local:local-only-placeholder@127.0.0.1:5432/booking_engine_local';
 const runId = randomUUID().replaceAll('-', '').slice(0, 12);
 const integrationSchema = `ical_sync_test_${runId}`;
 const table = (name: string): string => `"${integrationSchema}"."${name}"`;
 const sourceId = 'airbnb-main';
 
-function makeProperty(id: string): PropertyConfigurationInputV1 {
+function makeProperty(id: string): PropertyConfigurationInput {
   return {
     id,
     name: 'iCal Integration Bungalow',

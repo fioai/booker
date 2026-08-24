@@ -1,7 +1,7 @@
-export declare const SAMPLE_DATA_V1: {
+export declare const SAMPLE_DATA: {
   readonly organization: {
     readonly id: 'sample-tenant';
-    readonly name: 'Lotus Booking local sample tenant';
+    readonly name: 'Booking Engine local sample tenant';
   };
   readonly property: {
     readonly id: 'sample-bungalow';

@@ -1,30 +1,30 @@
-import { ISO_4217_ACTIVE_CODES_V1 } from './iso-4217-active.js';
+import { ISO_4217_ACTIVE_CODES } from './iso-4217-active.js';
 import {
-  createLocalDateIntervalV1,
-  type QuoteBreakdownV1,
-  type QuoteNightV1,
+  createLocalDateInterval,
+  type QuoteBreakdown,
+  type QuoteNight,
 } from './availability-rates.js';
-import type { ResultV1 } from './property-configuration-types.js';
+import type { Result } from './property/configuration/types.js';
 
-export type BookingRequestStatusV1 = 'pending' | 'approved' | 'rejected' | 'expired';
+export type BookingRequestStatus = 'pending' | 'approved' | 'rejected' | 'expired';
 
-export type BookingRequestActionV1 = 'approve' | 'reject' | 'expire';
+export type BookingRequestAction = 'approve' | 'reject' | 'expire';
 
-export interface IllegalBookingRequestTransitionV1 {
+export interface IllegalBookingRequestTransition {
   readonly code: 'illegal_transition';
-  readonly from: BookingRequestStatusV1;
-  readonly action: BookingRequestActionV1;
+  readonly from: BookingRequestStatus;
+  readonly action: BookingRequestAction;
 }
 
-export type BookingRequestTransitionResultV1 = ResultV1<
-  BookingRequestStatusV1,
-  IllegalBookingRequestTransitionV1
+export type BookingRequestTransitionResult = Result<
+  BookingRequestStatus,
+  IllegalBookingRequestTransition
 >;
 
-export function transitionBookingRequestV1(
-  status: BookingRequestStatusV1,
-  action: BookingRequestActionV1,
-): BookingRequestTransitionResultV1 {
+export function transitionBookingRequest(
+  status: BookingRequestStatus,
+  action: BookingRequestAction,
+): BookingRequestTransitionResult {
   if (status === 'pending' && action === 'approve') {
     return { ok: true, value: 'approved' };
   }
@@ -40,7 +40,7 @@ export function transitionBookingRequestV1(
   };
 }
 
-export type QuoteSnapshotValidationCodeV1 =
+export type QuoteSnapshotValidationCode =
   | 'invalid_quote'
   | 'invalid_currency'
   | 'invalid_amount'
@@ -50,13 +50,13 @@ export type QuoteSnapshotValidationCodeV1 =
   | 'nightly_subtotal_mismatch'
   | 'quote_total_mismatch';
 
-export interface QuoteSnapshotValidationErrorV1 {
+export interface QuoteSnapshotValidationError {
   readonly field: string;
-  readonly code: QuoteSnapshotValidationCodeV1;
+  readonly code: QuoteSnapshotValidationCode;
   readonly message: string;
 }
 
-export type QuoteSnapshotResultV1 = ResultV1<QuoteBreakdownV1, QuoteSnapshotValidationErrorV1>;
+export type QuoteSnapshotResult = Result<QuoteBreakdown, QuoteSnapshotValidationError>;
 
 const QUOTE_FIELDS = [
   'arrival',
@@ -78,9 +78,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function error(
   field: string,
-  code: QuoteSnapshotValidationCodeV1,
+  code: QuoteSnapshotValidationCode,
   message: string,
-): QuoteSnapshotValidationErrorV1 {
+): QuoteSnapshotValidationError {
   return { field, code, message };
 }
 
@@ -104,7 +104,7 @@ function dateAtOffset(interval: { readonly arrival: string }, offset: number): s
  * Validates and clones a quote produced by the server rate boundary. The returned value is
  * the only quote shape that persistence code should treat as a snapshot.
  */
-export function createQuoteSnapshotV1(input: unknown): QuoteSnapshotResultV1 {
+export function createQuoteSnapshot(input: unknown): QuoteSnapshotResult {
   if (!isRecord(input)) {
     return {
       ok: false,
@@ -112,7 +112,7 @@ export function createQuoteSnapshotV1(input: unknown): QuoteSnapshotResultV1 {
     };
   }
 
-  const errors: QuoteSnapshotValidationErrorV1[] = [];
+  const errors: QuoteSnapshotValidationError[] = [];
   if (
     Object.keys(input).length !== QUOTE_FIELDS.length ||
     QUOTE_FIELDS.some((field) => !Object.hasOwn(input, field))
@@ -120,7 +120,7 @@ export function createQuoteSnapshotV1(input: unknown): QuoteSnapshotResultV1 {
     errors.push(error('quote', 'invalid_quote', 'quote has an unexpected field set.'));
   }
 
-  const interval = createLocalDateIntervalV1({
+  const interval = createLocalDateInterval({
     arrival: input['arrival'],
     departure: input['departure'],
   });
@@ -132,7 +132,7 @@ export function createQuoteSnapshotV1(input: unknown): QuoteSnapshotResultV1 {
   if (
     typeof currency !== 'string' ||
     !/^[A-Z]{3}$/u.test(currency) ||
-    !ISO_4217_ACTIVE_CODES_V1.has(currency)
+    !ISO_4217_ACTIVE_CODES.has(currency)
   ) {
     errors.push(error('currency', 'invalid_currency', 'quote currency is not active.'));
   }
@@ -168,7 +168,7 @@ export function createQuoteSnapshotV1(input: unknown): QuoteSnapshotResultV1 {
   const validCleaningFeeMinor = isSafeMinorAmount(cleaningFeeMinor) ? cleaningFeeMinor : undefined;
 
   const nightlyInput = input['nightly'];
-  const nightly: QuoteNightV1[] = [];
+  const nightly: QuoteNight[] = [];
   let nightlySubtotalMinor = 0;
   if (!Array.isArray(nightlyInput)) {
     errors.push(error('nightly', 'invalid_quote', 'nightly must be an array.'));

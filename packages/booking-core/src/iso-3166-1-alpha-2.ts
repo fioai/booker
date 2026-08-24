@@ -2,7 +2,7 @@
  * Complete assigned ISO 3166-1 alpha-2 set, captured as domain data.
  * Reserved, user-assigned, and historical elements are intentionally absent.
  */
-export const ISO_3166_1_ALPHA_2_CODES_V1: ReadonlySet<string> = new Set([
+export const ISO_3166_1_ALPHA_2_CODES: ReadonlySet<string> = new Set([
   'AD',
   'AE',
   'AF',

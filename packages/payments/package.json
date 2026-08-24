@@ -1,5 +1,5 @@
 {
-  "name": "@lotus-booking/payments",
+  "name": "@booking-engine/payments",
   "version": "0.0.0",
   "private": true,
   "type": "module",

@@ -24,22 +24,22 @@ export {
   createOwnerCredentialRepository,
   createPostgresOwnerCredentialRepository,
   PostgresOwnerCredentialRepository,
-  type OwnerCredentialRecordV1,
-  type OwnerCredentialRepositoryV1,
-  type OwnerRoleV1,
-} from './owner-auth-repository.js';
+  type OwnerCredentialRecord,
+  type OwnerCredentialRepository,
+  type OwnerRole,
+} from './owner/auth-repository.js';
 export {
   createAvailabilityRepository,
   createPostgresAvailabilityRepository,
   PostgresAvailabilityRepository,
   type AvailabilityOrganizationScope,
-  type AvailabilityRecordKindV1,
-  type AvailabilityRecordStatusV1,
-  type AvailabilityRecordV1,
+  type AvailabilityRecordKind,
+  type AvailabilityRecordStatus,
+  type AvailabilityRecord,
   type AvailabilityRepository,
-  type ConfirmedOccupancyInputV1,
-  type HoldInputV1,
-  type ManualBlockInputV1,
+  type ConfirmedOccupancyInput,
+  type HoldInput,
+  type ManualBlockInput,
 } from './availability-repository.js';
 export {
   createPostgresRateRepository,
@@ -51,49 +51,49 @@ export {
 export {
   createPostgresBookingRequestRepository,
   PostgresBookingRequestRepository,
-  type BookingRequestRepositoryOptionsV1,
-  type BookingRequestCreateInputV1,
-  type BookingRequestOrganizationScopeV1,
-  type BookingRequestRecordV1,
-  type BookingRequestRecheckResultV1,
-  type BookingRequestRepositoryV1,
-  type BookingRequestSubmitOptionsV1,
-} from './booking-request-repository.js';
+  type BookingRequestRepositoryOptions,
+  type BookingRequestCreateInput,
+  type BookingRequestOrganizationScope,
+  type BookingRequestRecord,
+  type BookingRequestRecheckResult,
+  type BookingRequestRepository,
+  type BookingRequestSubmitOptions,
+} from './booking/request-repository.js';
 export {
   createPostgresBookingOutboxRepository,
-  OutboxDeliveryErrorV1,
+  OutboxDeliveryError,
   PostgresBookingOutboxRepository,
-  type BookingOutboxDeliveryEventV1,
-  type BookingOutboxDeliveryPortV1,
-  type BookingOutboxDeliverySummaryV1,
-  type BookingOutboxEventTypeV1,
-  type BookingOutboxRepositoryOptionsV1,
-  type BookingOutboxRepositoryV1,
-  type BookingOutboxStatusV1,
-  type OutboxDeliveryErrorCodeV1,
-  type OutboxDeliveryPortV1,
-} from './booking-outbox-repository.js';
+  type BookingOutboxDeliveryEvent,
+  type BookingOutboxDeliveryPort,
+  type BookingOutboxDeliverySummary,
+  type BookingOutboxEventType,
+  type BookingOutboxRepositoryOptions,
+  type BookingOutboxRepository,
+  type BookingOutboxStatus,
+  type OutboxDeliveryErrorCode,
+  type OutboxDeliveryPort,
+} from './booking/outbox-repository.js';
 export {
   createICalBlockStore,
   createPostgresICalBlockStore,
   PostgresICalBlockStore,
-} from './ical-block-repository.js';
+} from './ical/block-repository.js';
 export type {
   ICalBlockRecord,
   ICalBlockStore,
   ICalReleaseProvenance,
   ICalScope,
-} from '@lotus-booking/channel-ical';
+} from '@booking-engine/channel-ical';
 export {
   createPaymentCheckoutRepository,
   createPostgresPaymentCheckoutRepository,
   PostgresPaymentCheckoutRepository,
-  type PaymentCheckoutPreparationV1,
-  type PaymentCheckoutRecordV1,
-  type PaymentCheckoutRepositoryOptionsV1,
-  type PaymentCheckoutRepositoryV1,
-  type PaymentOrganizationScopeV1,
-  type PaymentProviderRegistrationV1,
-  type PaymentWebhookProcessingResultV1,
-  type PaymentWebhookProcessingStatusV1,
-} from './payment-checkout-repository.js';
+  type PaymentCheckoutPreparation,
+  type PaymentCheckoutRecord,
+  type PaymentCheckoutRepositoryOptions,
+  type PaymentCheckoutRepository,
+  type PaymentOrganizationScope,
+  type PaymentProviderRegistration,
+  type PaymentWebhookProcessingResult,
+  type PaymentWebhookProcessingStatus,
+} from './payment/checkout-repository.js';

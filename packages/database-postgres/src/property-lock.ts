@@ -10,6 +10,6 @@ export async function lockProperty(
   propertyId: string,
 ): Promise<void> {
   await transaction.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
-    `lotus-booking:property:${organizationId}:${propertyId}`,
+    `booking-engine:property:${organizationId}:${propertyId}`,
   ]);
 }

@@ -52,7 +52,7 @@ port.
 The inherited uncommitted slice was preserved and first exercised before repair:
 
 ```text
-corepack.cmd pnpm exec vitest run packages/booking-core/test/request-lifecycle.test.ts tests/integration/request-lifecycle.test.ts apps/api/test/public-booking-api.test.ts apps/api/test/public-booking-http-server.test.ts packages/sdk-typescript/test/public-contract.test.ts
+corepack.cmd pnpm exec vitest run packages/booking-core/test/request-lifecycle.test.ts tests/integration/request-lifecycle.test.ts apps/api/test/public/booking/api.test.ts apps/api/test/public/booking/http-server.test.ts packages/sdk-typescript/test/public-contract.test.ts
 ```
 
 Result: exit `0`; 5 files and 34 tests passed.
@@ -70,7 +70,7 @@ GREEN result: exit 0; the focused test passed after the canonical quote was incl
 2. Atomic public submission boundary.
 
 ```text
-RED: corepack.cmd pnpm exec vitest run apps/api/test/public-booking-api.test.ts -t "legacy non-atomic" --reporter=verbose
+RED: corepack.cmd pnpm exec vitest run apps/api/test/public/booking/api.test.ts -t "legacy non-atomic" --reporter=verbose
 RED result: exit 1; a create-only dependency resolved a public request through the legacy check-then-create fallback.
 GREEN result: exit 0; the focused API selection passed after the public composition boundary required submit and failed closed.
 ```

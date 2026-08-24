@@ -2,11 +2,11 @@ import { createHmac } from 'node:crypto';
 
 import { describe, expect, it } from 'vitest';
 
-import type { PaymentCheckoutRequestV1 } from '../../payments/src/index.js';
+import type { PaymentCheckoutRequest } from '../../payments/src/index.js';
 import {
-  StripeWebhookErrorV1,
-  createStripeCheckoutAdapterV1,
-  verifyStripeWebhookSignatureV1,
+  StripeWebhookError,
+  createStripeCheckoutAdapter,
+  verifyStripeWebhookSignature,
 } from '../src/index.js';
 
 const secret = 'whsec_test_only_secret';
@@ -20,7 +20,7 @@ const checkoutRequest = {
   currency: 'EUR',
   quoteRevision: 'quote-sha256-a',
   checkoutExpiresAt: '2026-08-01T00:15:00.000Z',
-} as PaymentCheckoutRequestV1;
+} as PaymentCheckoutRequest;
 
 function sign(rawBody: Uint8Array, timestamp = Math.floor(now.getTime() / 1000)): string {
   const digest = createHmac('sha256', secret)
@@ -61,14 +61,14 @@ function eventBody(overrides: Record<string, unknown> = {}): Uint8Array {
 describe('bounded Stripe test-mode adapter', () => {
   it('refuses live mode and live-looking keys', () => {
     expect(() =>
-      createStripeCheckoutAdapterV1({
+      createStripeCheckoutAdapter({
         mode: 'live' as 'test',
         accountId: 'acct_test_001',
         webhookSecret: secret,
       }),
     ).toThrow('test mode');
     expect(() =>
-      createStripeCheckoutAdapterV1({
+      createStripeCheckoutAdapter({
         mode: 'test',
         accountId: 'acct_test_001',
         webhookSecret: secret,
@@ -78,7 +78,7 @@ describe('bounded Stripe test-mode adapter', () => {
   });
 
   it('creates a deterministic local test checkout without a provider network call', async () => {
-    const adapter = createStripeCheckoutAdapterV1({
+    const adapter = createStripeCheckoutAdapter({
       mode: 'test',
       accountId: 'acct_test_001',
       webhookSecret: secret,
@@ -93,7 +93,7 @@ describe('bounded Stripe test-mode adapter', () => {
   });
 
   it('verifies the exact raw bytes and normalizes a paid Checkout event', () => {
-    const adapter = createStripeCheckoutAdapterV1({
+    const adapter = createStripeCheckoutAdapter({
       mode: 'test',
       accountId: 'acct_test_001',
       webhookSecret: secret,
@@ -101,7 +101,7 @@ describe('bounded Stripe test-mode adapter', () => {
     });
     const raw = eventBody();
 
-    expect(verifyStripeWebhookSignatureV1(raw, sign(raw), secret, { now })).toEqual({
+    expect(verifyStripeWebhookSignature(raw, sign(raw), secret, { now })).toEqual({
       timestamp: Math.floor(now.getTime() / 1000),
     });
     expect(adapter.verifyWebhook(raw, sign(raw))).toEqual({
@@ -133,25 +133,25 @@ describe('bounded Stripe test-mode adapter', () => {
     ['stale timestamp', `t=${Math.floor(now.getTime() / 1000) - 601},v1=invalid`],
     ['malformed header', 'v1=only'],
   ])('rejects %s without exposing secrets', (_label, header) => {
-    const adapter = createStripeCheckoutAdapterV1({
+    const adapter = createStripeCheckoutAdapter({
       mode: 'test',
       accountId: 'acct_test_001',
       webhookSecret: secret,
       clock: () => now,
     });
 
-    expect(() => adapter.verifyWebhook(eventBody(), header)).toThrow(StripeWebhookErrorV1);
+    expect(() => adapter.verifyWebhook(eventBody(), header)).toThrow(StripeWebhookError);
     try {
       adapter.verifyWebhook(eventBody(), header);
     } catch (error) {
-      expect(error).toBeInstanceOf(StripeWebhookErrorV1);
+      expect(error).toBeInstanceOf(StripeWebhookError);
       expect((error as Error).message).not.toContain(secret);
       expect((error as Error).message).not.toContain('org-a');
     }
   });
 
   it('rejects an account mismatch and an oversized exact body', () => {
-    const adapter = createStripeCheckoutAdapterV1({
+    const adapter = createStripeCheckoutAdapter({
       mode: 'test',
       accountId: 'acct_expected',
       webhookSecret: secret,
@@ -166,7 +166,7 @@ describe('bounded Stripe test-mode adapter', () => {
   });
 
   it('rejects a signed live-mode event in the test-only adapter', () => {
-    const adapter = createStripeCheckoutAdapterV1({
+    const adapter = createStripeCheckoutAdapter({
       mode: 'test',
       accountId: 'acct_test_001',
       webhookSecret: secret,

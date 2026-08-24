@@ -1,6 +1,6 @@
 import { TextDecoder, TextEncoder } from 'node:util';
 
-export const ICAL_PARSE_LIMITS_V1 = Object.freeze({
+export const ICAL_PARSE_LIMITS = Object.freeze({
   maxBytes: 1_000_000,
   maxEvents: 500,
   maxLineLength: 8_192,
@@ -226,10 +226,7 @@ function unescapeText(value: string, line: number): string {
     unescaped += escaped === 'N' || escaped === 'n' ? '\n' : escaped;
     index += 1;
   }
-  if (
-    unescaped.length > ICAL_PARSE_LIMITS_V1.maxTextLength ||
-    hasUnsafeControlCharacters(unescaped)
-  ) {
+  if (unescaped.length > ICAL_PARSE_LIMITS.maxTextLength || hasUnsafeControlCharacters(unescaped)) {
     throw new ICalParseError('text_too_long', 'iCalendar text contains unsafe content.', line);
   }
   return unescaped;
@@ -389,7 +386,7 @@ function parseEvent(raw: RawEvent): ICalEvent {
   const uid = unescapeText(uidProperty.value, uidProperty.line).trim();
   if (
     uid.length === 0 ||
-    uid.length > ICAL_PARSE_LIMITS_V1.maxUidLength ||
+    uid.length > ICAL_PARSE_LIMITS.maxUidLength ||
     hasAnyControlCharacters(uid)
   ) {
     throw new ICalParseError(
@@ -412,7 +409,7 @@ function parseEvent(raw: RawEvent): ICalEvent {
     Number(end.slice(8, 10)),
   );
   const nights = endDay - startDay;
-  if (nights <= 0 || nights > ICAL_PARSE_LIMITS_V1.maxNights) {
+  if (nights <= 0 || nights > ICAL_PARSE_LIMITS.maxNights) {
     throw new ICalParseError(
       'invalid_interval',
       'calendar event interval is outside the supported bound.',
@@ -497,11 +494,11 @@ export function parseICalCalendar(
   input: string | Uint8Array,
   options: ICalParseOptions = {},
 ): ICalCalendar {
-  const maxBytes = parseLimit(options.maxBytes, ICAL_PARSE_LIMITS_V1.maxBytes, 'maxBytes');
-  const maxEvents = parseLimit(options.maxEvents, ICAL_PARSE_LIMITS_V1.maxEvents, 'maxEvents');
+  const maxBytes = parseLimit(options.maxBytes, ICAL_PARSE_LIMITS.maxBytes, 'maxBytes');
+  const maxEvents = parseLimit(options.maxEvents, ICAL_PARSE_LIMITS.maxEvents, 'maxEvents');
   const maxLineLength = parseLimit(
     options.maxLineLength,
-    ICAL_PARSE_LIMITS_V1.maxLineLength,
+    ICAL_PARSE_LIMITS.maxLineLength,
     'maxLineLength',
   );
   const lines = unfoldLines(decodeInput(input, maxBytes), maxLineLength);

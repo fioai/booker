@@ -1,4 +1,4 @@
-SELECT pg_advisory_xact_lock(hashtextextended('lotus-booking:extension:btree_gist', 0));
+SELECT pg_advisory_xact_lock(hashtextextended('booking-engine:extension:btree_gist', 0));
 
 CREATE EXTENSION IF NOT EXISTS btree_gist WITH SCHEMA public;
 

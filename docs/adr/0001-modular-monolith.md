@@ -5,7 +5,7 @@
 
 ## Decision
 
-Lotus Booking starts as a TypeScript modular monolith backed by PostgreSQL. Domain,
+Booking Engine starts as a TypeScript modular monolith backed by PostgreSQL. Domain,
 persistence, provider, channel, notification, SDK, and application boundaries are
 separate workspace packages, while deployment and runtime composition remain in the
 API application.

@@ -1,14 +1,14 @@
 import type { QueryResultRow } from 'pg';
 
 import {
-  createPropertyConfigurationV1,
-  type PropertyValidationErrorV1,
-  type PropertyConfigurationV1,
-} from '@lotus-booking/booking-core';
+  createPropertyConfiguration,
+  type PropertyValidationError,
+  type PropertyConfiguration,
+} from '@booking-engine/booking-core';
 import type {
   PublicBedConfigurationV1,
   PublicPropertyConfigurationV1,
-} from '@lotus-booking/sdk-typescript';
+} from '@booking-engine/sdk-typescript';
 
 import { PersistenceError, isPostgresError } from './persistence-errors.js';
 import type { PostgresDatabasePort } from './postgres-database.js';
@@ -22,14 +22,14 @@ export interface OrganizationScope {
 }
 
 export interface PropertyRepository {
-  create(scope: OrganizationScope, input: unknown): Promise<PropertyConfigurationV1>;
-  findById(scope: OrganizationScope, propertyId: string): Promise<PropertyConfigurationV1 | null>;
-  list(scope: OrganizationScope): Promise<readonly PropertyConfigurationV1[]>;
+  create(scope: OrganizationScope, input: unknown): Promise<PropertyConfiguration>;
+  findById(scope: OrganizationScope, propertyId: string): Promise<PropertyConfiguration | null>;
+  list(scope: OrganizationScope): Promise<readonly PropertyConfiguration[]>;
   update(
     scope: OrganizationScope,
     propertyId: string,
     input: unknown,
-  ): Promise<PropertyConfigurationV1 | null>;
+  ): Promise<PropertyConfiguration | null>;
   delete(scope: OrganizationScope, propertyId: string): Promise<boolean>;
   findPublicById(
     scope: OrganizationScope,
@@ -98,8 +98,8 @@ function validatePropertyId(propertyId: string): string {
   return propertyId;
 }
 
-function canonicalizeProperty(input: unknown): PropertyConfigurationV1 {
-  const result = createPropertyConfigurationV1(input);
+function canonicalizeProperty(input: unknown): PropertyConfiguration {
+  const result = createPropertyConfiguration(input);
   if (!result.ok) {
     throw new PersistenceError(
       'property_validation',
@@ -111,7 +111,7 @@ function canonicalizeProperty(input: unknown): PropertyConfigurationV1 {
   return result.value;
 }
 
-function assertMatchingPropertyId(property: PropertyConfigurationV1, propertyId: string): void {
+function assertMatchingPropertyId(property: PropertyConfiguration, propertyId: string): void {
   if (property.id !== propertyId) {
     throw new PersistenceError(
       'invalid_property_id',
@@ -122,7 +122,7 @@ function assertMatchingPropertyId(property: PropertyConfigurationV1, propertyId:
 
 function propertyValues(
   organizationId: string,
-  property: PropertyConfigurationV1,
+  property: PropertyConfiguration,
 ): readonly unknown[] {
   return [
     organizationId,
@@ -162,20 +162,18 @@ function toDomainInput(row: StoredPropertyRow): unknown {
   };
 }
 
-function fromStoredRow(row: StoredPropertyRow): PropertyConfigurationV1 {
+function fromStoredRow(row: StoredPropertyRow): PropertyConfiguration {
   return canonicalizeProperty(toDomainInput(row));
 }
 
 function databaseCorruption(
   message: string,
-  errors?: readonly PropertyValidationErrorV1[],
+  errors?: readonly PropertyValidationError[],
 ): PersistenceError {
   return new PersistenceError('database_corruption', message, errors);
 }
 
-function serializePublicPropertyV1(
-  property: PropertyConfigurationV1,
-): PublicPropertyConfigurationV1 {
+function serializePublicProperty(property: PropertyConfiguration): PublicPropertyConfigurationV1 {
   const bedConfiguration: readonly PublicBedConfigurationV1[] = Object.freeze(
     property.bedConfiguration.map((bed) => Object.freeze({ ...bed })),
   );
@@ -198,7 +196,7 @@ function serializePublicPropertyV1(
 }
 
 function fromPublicRow(row: PublicPropertyRow): PublicPropertyConfigurationV1 {
-  const result = createPropertyConfigurationV1({
+  const result = createPropertyConfiguration({
     id: row.id,
     name: row.name,
     summary: row.summary,
@@ -218,7 +216,7 @@ function fromPublicRow(row: PublicPropertyRow): PublicPropertyConfigurationV1 {
     throw databaseCorruption('public property row failed domain validation.', result.errors);
   }
 
-  return serializePublicPropertyV1(result.value);
+  return serializePublicProperty(result.value);
 }
 
 export class PostgresPropertyRepository implements PropertyRepository {
@@ -242,7 +240,7 @@ export class PostgresPropertyRepository implements PropertyRepository {
     }
   }
 
-  async create(scope: OrganizationScope, input: unknown): Promise<PropertyConfigurationV1> {
+  async create(scope: OrganizationScope, input: unknown): Promise<PropertyConfiguration> {
     const organizationId = validateScope(scope);
     const property = canonicalizeProperty(input);
     await this.requireOrganization(organizationId);
@@ -286,7 +284,7 @@ export class PostgresPropertyRepository implements PropertyRepository {
   async findById(
     scope: OrganizationScope,
     propertyId: string,
-  ): Promise<PropertyConfigurationV1 | null> {
+  ): Promise<PropertyConfiguration | null> {
     const organizationId = validateScope(scope);
     const id = validatePropertyId(propertyId);
     const result = await this.database.query<StoredPropertyRow>(
@@ -303,7 +301,7 @@ export class PostgresPropertyRepository implements PropertyRepository {
     return row === undefined ? null : fromStoredRow(row);
   }
 
-  async list(scope: OrganizationScope): Promise<readonly PropertyConfigurationV1[]> {
+  async list(scope: OrganizationScope): Promise<readonly PropertyConfiguration[]> {
     const organizationId = validateScope(scope);
     const result = await this.database.query<StoredPropertyRow>(
       `
@@ -323,7 +321,7 @@ export class PostgresPropertyRepository implements PropertyRepository {
     scope: OrganizationScope,
     propertyId: string,
     input: unknown,
-  ): Promise<PropertyConfigurationV1 | null> {
+  ): Promise<PropertyConfiguration | null> {
     const organizationId = validateScope(scope);
     const id = validatePropertyId(propertyId);
     const property = canonicalizeProperty(input);

@@ -1,5 +1,5 @@
 {
-  "name": "@lotus-booking/database-postgres",
+  "name": "@booking-engine/database-postgres",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -14,10 +14,10 @@
     "migrations"
   ],
   "dependencies": {
-    "@lotus-booking/booking-core": "workspace:*",
-    "@lotus-booking/payments": "workspace:*",
-    "@lotus-booking/channel-ical": "workspace:*",
-    "@lotus-booking/sdk-typescript": "workspace:*",
+    "@booking-engine/booking-core": "workspace:*",
+    "@booking-engine/payments": "workspace:*",
+    "@booking-engine/channel-ical": "workspace:*",
+    "@booking-engine/sdk-typescript": "workspace:*",
     "pg": "^8.22.0"
   },
   "devDependencies": {

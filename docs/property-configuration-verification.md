@@ -12,7 +12,7 @@ that runtime metadata.
 The pre-existing property suite was green before the review tests were added:
 
 ```text
-corepack.cmd pnpm test -- packages/booking-core/test/property-configuration.test.ts
+corepack.cmd pnpm test -- packages/booking-core/test/property/configuration.test.ts
 ```
 
 Result: exit `0`; 2 test files passed and 17 tests passed. This was not sufficient
@@ -21,7 +21,7 @@ evidence because the suite did not cover the review requirements.
 The focused review suite was then run before implementation fixes:
 
 ```text
-corepack.cmd pnpm test -- packages/booking-core/test/property-configuration.test.ts
+corepack.cmd pnpm test -- packages/booking-core/test/property/configuration.test.ts
 ```
 
 Result: expected RED, exit `1`.
@@ -29,11 +29,11 @@ Result: expected RED, exit `1`.
 Captured result summary:
 
 ```text
-packages/booking-core/test/property-configuration.test.ts (33 tests | 33 failed)
+packages/booking-core/test/property/configuration.test.ts (33 tests | 33 failed)
 Test Files: 1 failed, 1 passed (2 total)
 Tests: 33 failed, 2 passed (35 total)
-Primary failure: createPropertyConfigurationV1 is not a function
-Additional missing-contract failures: PROPERTY_CONFIGURATION_LIMITS_V1 is undefined
+Primary failure: createPropertyConfiguration is not a function
+Additional missing-contract failures: PROPERTY_CONFIGURATION_LIMITS is undefined
 ```
 
 The RED suite covers complete ISO data and ASCII-before-folding, Brazil positive
@@ -46,12 +46,12 @@ assertions now execute at the API composition boundary.
 ## Public-contract boundary repair
 
 The behavioral suite was green while the architecture was still RED: the SDK
-manifest declared `@lotus-booking/booking-core`, and
-`packages/sdk-typescript/src/property-configuration-mapper.ts` imported that private
+manifest declared `@booking-engine/booking-core`, and
+`packages/sdk-typescript/src/property/configuration/mapper.ts` imported that private
 domain and was re-exported by the SDK. Admin and storefront therefore had a
 transitive path to the private server domain.
 
-The GREEN repair moves `serializePublicPropertyV1` and its runtime/privacy tests to
+The GREEN repair moves `serializePublicProperty` and its runtime/privacy tests to
 `apps/api`. The API depends on both `booking-core` and the SDK and is the only package
 that exports the mapper. The SDK now contains only explicitly V1-versioned public
 types/client contracts, has no dependency fields, no core project reference, and no

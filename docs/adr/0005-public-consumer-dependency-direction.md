@@ -6,7 +6,7 @@
 ## Decision
 
 Storefront and admin applications depend on the versioned public API contract through
-`@lotus-booking/sdk-typescript`. They must not import engine internals, query
+`@booking-engine/sdk-typescript`. They must not import engine internals, query
 PostgreSQL tables, or depend on private server modules. The API may compose internal
 engine and adapter packages.
 

@@ -1,5 +1,5 @@
 {
-  "name": "@lotus-booking/channel-ical",
+  "name": "@booking-engine/channel-ical",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -13,6 +13,6 @@
     "dist"
   ],
   "dependencies": {
-    "@lotus-booking/channel-calendar": "workspace:*"
+    "@booking-engine/channel-calendar": "workspace:*"
   }
 }

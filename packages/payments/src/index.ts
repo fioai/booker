@@ -2,11 +2,11 @@
 
 export type MoneyMinor = number & { readonly __brand: 'MoneyMinor' };
 
-export type PaymentStateV1 = 'created' | 'open' | 'paid' | 'failed' | 'expired' | 'rejected';
+export type PaymentState = 'created' | 'open' | 'paid' | 'failed' | 'expired' | 'rejected';
 
-export type PaymentEventOutcomeV1 = 'succeeded' | 'failed' | 'expired';
+export type PaymentEventOutcome = 'succeeded' | 'failed' | 'expired';
 
-export interface PaymentCheckoutRequestV1 {
+export interface PaymentCheckoutRequest {
   readonly organizationId: string;
   readonly propertyId: string;
   readonly requestId: string;
@@ -18,32 +18,32 @@ export interface PaymentCheckoutRequestV1 {
   readonly checkoutExpiresAt: string;
 }
 
-export interface PaymentCheckoutSessionV1 {
+export interface PaymentCheckoutSession {
   readonly providerName: string;
   readonly providerSessionId: string;
   readonly checkoutUrl: string;
   readonly expiresAt: string;
 }
 
-export interface PaymentOrganizationScopeV1 {
+export interface PaymentOrganizationScope {
   readonly organizationId: string;
 }
 
-export interface PaymentProviderRegistrationV1 {
+export interface PaymentProviderRegistration {
   readonly providerName: string;
   readonly providerAccountId: string;
 }
 
-export interface PaymentCheckoutPreparationV1 {
+export interface PaymentCheckoutPreparation {
   readonly checkoutId: string;
   readonly providerName: string;
   readonly providerAccountId: string;
   readonly providerSessionId: string | null;
-  readonly state: Extract<PaymentStateV1, 'created' | 'open'>;
-  readonly request: PaymentCheckoutRequestV1;
+  readonly state: Extract<PaymentState, 'created' | 'open'>;
+  readonly request: PaymentCheckoutRequest;
 }
 
-export interface PaymentWebhookMetadataV1 {
+export interface PaymentWebhookMetadata {
   readonly organizationId: string;
   readonly propertyId: string;
   readonly requestId: string;
@@ -51,20 +51,20 @@ export interface PaymentWebhookMetadataV1 {
   readonly quoteRevision: string;
 }
 
-export interface PaymentWebhookEventV1 {
+export interface PaymentWebhookEvent {
   readonly providerName: string;
   readonly providerEventId: string;
   readonly providerAccountId: string;
-  readonly eventType: PaymentEventOutcomeV1;
+  readonly eventType: PaymentEventOutcome;
   readonly providerSessionId: string;
   readonly providerPaymentId: string | null;
   readonly amountMinor: MoneyMinor;
   readonly currency: string;
-  readonly metadata: PaymentWebhookMetadataV1;
+  readonly metadata: PaymentWebhookMetadata;
   readonly occurredAt: string;
 }
 
-export interface PaymentCheckoutRecordV1 {
+export interface PaymentCheckoutRecord {
   readonly checkoutId: string;
   readonly organizationId: string;
   readonly propertyId: string;
@@ -77,7 +77,7 @@ export interface PaymentCheckoutRecordV1 {
   readonly amountMinor: MoneyMinor;
   readonly currency: string;
   readonly quoteRevision: string;
-  readonly state: PaymentStateV1;
+  readonly state: PaymentState;
   readonly failureCode: string | null;
   readonly checkoutExpiresAt: string;
   readonly paidAt: string | null;
@@ -85,31 +85,31 @@ export interface PaymentCheckoutRecordV1 {
   readonly updatedAt: string;
 }
 
-export type PaymentWebhookProcessingStatusV1 = 'processed' | 'duplicate' | 'ignored' | 'rejected';
+export type PaymentWebhookProcessingStatus = 'processed' | 'duplicate' | 'ignored' | 'rejected';
 
-export interface PaymentWebhookProcessingResultV1 {
-  readonly status: PaymentWebhookProcessingStatusV1;
-  readonly payment: PaymentCheckoutRecordV1 | null;
+export interface PaymentWebhookProcessingResult {
+  readonly status: PaymentWebhookProcessingStatus;
+  readonly payment: PaymentCheckoutRecord | null;
   readonly code?: string;
 }
 
-export interface PaymentCheckoutStoreV1 {
+export interface PaymentCheckoutStore {
   prepareCheckout(
-    scope: PaymentOrganizationScopeV1,
+    scope: PaymentOrganizationScope,
     propertyId: string,
     requestId: string,
-    provider: PaymentProviderRegistrationV1,
-  ): Promise<PaymentCheckoutPreparationV1>;
+    provider: PaymentProviderRegistration,
+  ): Promise<PaymentCheckoutPreparation>;
   attachProviderSession(
-    scope: PaymentOrganizationScopeV1,
+    scope: PaymentOrganizationScope,
     propertyId: string,
     checkoutId: string,
-    session: PaymentCheckoutSessionV1,
-  ): Promise<PaymentCheckoutRecordV1>;
-  processWebhookEvent(event: PaymentWebhookEventV1): Promise<PaymentWebhookProcessingResultV1>;
+    session: PaymentCheckoutSession,
+  ): Promise<PaymentCheckoutRecord>;
+  processWebhookEvent(event: PaymentWebhookEvent): Promise<PaymentWebhookProcessingResult>;
 }
 
-export interface PaymentContractErrorV1 {
+export interface PaymentContractError {
   readonly field: string;
   readonly code:
     | 'invalid_object'
@@ -122,9 +122,9 @@ export interface PaymentContractErrorV1 {
   readonly message: string;
 }
 
-export type PaymentContractResultV1<T> =
+export type PaymentContractResult<T> =
   | { readonly ok: true; readonly value: T }
-  | { readonly ok: false; readonly errors: readonly PaymentContractErrorV1[] };
+  | { readonly ok: false; readonly errors: readonly PaymentContractError[] };
 
 const IDENTIFIER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/u;
 const REVISION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/u;
@@ -145,9 +145,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function contractError(
   field: string,
-  code: PaymentContractErrorV1['code'],
+  code: PaymentContractError['code'],
   message: string,
-): PaymentContractErrorV1 {
+): PaymentContractError {
   return { field, code, message };
 }
 
@@ -160,9 +160,9 @@ function isValidTimestamp(value: unknown): value is string {
 }
 
 /** Canonicalizes only the fields the server may pass to a payment provider. */
-export function createPaymentCheckoutRequestV1(
+export function createPaymentCheckoutRequest(
   input: unknown,
-): PaymentContractResultV1<PaymentCheckoutRequestV1> {
+): PaymentContractResult<PaymentCheckoutRequest> {
   if (!isRecord(input)) {
     return {
       ok: false,
@@ -170,7 +170,7 @@ export function createPaymentCheckoutRequestV1(
     };
   }
 
-  const errors: PaymentContractErrorV1[] = [];
+  const errors: PaymentContractError[] = [];
   if (
     Object.keys(input).length !== CHECKOUT_FIELDS.length ||
     CHECKOUT_FIELDS.some((field) => !Object.hasOwn(input, field))
@@ -244,18 +244,18 @@ export function createPaymentCheckoutRequestV1(
   };
 }
 
-export type PaymentStateTransitionResultV1 =
-  | { readonly ok: true; readonly value: PaymentStateV1 }
+export type PaymentStateTransitionResult =
+  | { readonly ok: true; readonly value: PaymentState }
   | {
       readonly ok: false;
-      readonly error: { readonly code: 'terminal_state'; readonly state: PaymentStateV1 };
+      readonly error: { readonly code: 'terminal_state'; readonly state: PaymentState };
     };
 
 /** Applies monotonic payment state rules for post-approval payment recording. */
-export function paymentStateTransitionV1(
-  state: PaymentStateV1,
-  outcome: PaymentEventOutcomeV1,
-): PaymentStateTransitionResultV1 {
+export function paymentStateTransition(
+  state: PaymentState,
+  outcome: PaymentEventOutcome,
+): PaymentStateTransitionResult {
   if (state === 'paid') {
     return { ok: true, value: 'paid' };
   }
@@ -272,9 +272,9 @@ export function paymentStateTransitionV1(
 }
 
 /** Legacy-compatible aliases retained for composition boundaries. */
-export type CheckoutRequest = PaymentCheckoutRequestV1;
+export type CheckoutRequest = PaymentCheckoutRequest;
 
-export interface CheckoutSession extends PaymentCheckoutSessionV1 {
+export interface CheckoutSession extends PaymentCheckoutSession {
   readonly providerSessionId: string;
 }
 
@@ -285,30 +285,30 @@ export interface PaymentProvider {
   readonly verifyWebhook?: (
     rawBody: Uint8Array | string,
     signatureHeader: string,
-  ) => PaymentWebhookEventV1;
+  ) => PaymentWebhookEvent;
 }
 
-export interface PaymentCheckoutServiceV1 {
+export interface PaymentCheckoutService {
   startCheckout(
-    scope: PaymentOrganizationScopeV1,
+    scope: PaymentOrganizationScope,
     propertyId: string,
     requestId: string,
   ): Promise<CheckoutSession>;
   handleWebhook(
     rawBody: Uint8Array | string,
     signatureHeader: string,
-  ): Promise<PaymentWebhookProcessingResultV1>;
+  ): Promise<PaymentWebhookProcessingResult>;
 }
 
-export interface PaymentCheckoutServiceDependenciesV1 {
-  readonly store: PaymentCheckoutStoreV1;
+export interface PaymentCheckoutServiceDependencies {
+  readonly store: PaymentCheckoutStore;
   readonly provider: PaymentProvider;
 }
 
 /** Composes server-owned preparation, provider creation, and transactional webhook handling. */
-export function createPaymentCheckoutServiceV1(
-  dependencies: PaymentCheckoutServiceDependenciesV1,
-): PaymentCheckoutServiceV1 {
+export function createPaymentCheckoutService(
+  dependencies: PaymentCheckoutServiceDependencies,
+): PaymentCheckoutService {
   const providerAccountId = dependencies.provider.providerAccountId;
   if (typeof providerAccountId !== 'string' || providerAccountId.length === 0) {
     throw new TypeError('payment provider account is required at composition time.');
@@ -337,7 +337,7 @@ export function createPaymentCheckoutServiceV1(
       );
       return session;
     },
-    async handleWebhook(rawBody, signatureHeader): Promise<PaymentWebhookProcessingResultV1> {
+    async handleWebhook(rawBody, signatureHeader): Promise<PaymentWebhookProcessingResult> {
       const verifyWebhook = dependencies.provider.verifyWebhook;
       if (verifyWebhook === undefined) {
         throw new TypeError('payment provider webhook verification is not configured.');

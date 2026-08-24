@@ -4,7 +4,7 @@ import { isIP } from 'node:net';
 import { request as httpsRequest } from 'node:https';
 import { TextDecoder, TextEncoder } from 'node:util';
 
-export const ICAL_FETCH_LIMITS_V1 = Object.freeze({
+export const ICAL_FETCH_LIMITS = Object.freeze({
   maxRedirects: 3,
   timeoutMs: 10_000,
   maxBodyBytes: 1_000_000,
@@ -609,18 +609,13 @@ export function createICalFetcher(options: ICalFetchOptions = {}): ICalFetcher {
   void options.allowHttp;
   const maxRedirects = boundedOption(
     options.maxRedirects,
-    ICAL_FETCH_LIMITS_V1.maxRedirects,
+    ICAL_FETCH_LIMITS.maxRedirects,
     'maxRedirects',
   );
-  const timeoutMs = boundedOption(
-    options.timeoutMs,
-    ICAL_FETCH_LIMITS_V1.timeoutMs,
-    'timeoutMs',
-    1,
-  );
+  const timeoutMs = boundedOption(options.timeoutMs, ICAL_FETCH_LIMITS.timeoutMs, 'timeoutMs', 1);
   const maxBodyBytes = boundedOption(
     options.maxBodyBytes,
-    ICAL_FETCH_LIMITS_V1.maxBodyBytes,
+    ICAL_FETCH_LIMITS.maxBodyBytes,
     'maxBodyBytes',
     1,
   );

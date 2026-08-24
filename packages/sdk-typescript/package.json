@@ -1,5 +1,5 @@
 {
-  "name": "@lotus-booking/sdk-typescript",
+  "name": "@booking-engine/sdk-typescript",
   "version": "0.0.0",
   "private": true,
   "type": "module",

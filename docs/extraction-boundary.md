@@ -1,6 +1,6 @@
 # Booking engine extraction boundary
 
-Source repository: `lotus-booking`
+Source repository: `booking-engine`
 Source commit: `3f22e1149edc5153f7e1531acdf3e64b9b79b4c3`
 
 ## Included

@@ -1,6 +1,6 @@
 # Owner runbook
 
-This runbook is for an authorized owner or operator of a self-hosted Lotus Booking
+This runbook is for an authorized owner or operator of a self-hosted Booking Engine
 instance. Guest PII is visible only on the authenticated admin boundary. Public
 responses intentionally return a request identifier, dates, status, and quote but
 not guest name, email, or message.

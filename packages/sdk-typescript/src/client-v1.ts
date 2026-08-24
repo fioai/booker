@@ -1,5 +1,5 @@
 import {
-  LotusBookingApiErrorV1,
+  BookingEngineApiErrorV1,
   PublicContractValidationErrorV1,
   PUBLIC_API_VERSION_V1,
   validatePublicAvailabilityRequestV1,
@@ -41,14 +41,14 @@ export type PublicFetchV1 = (
   init: PublicFetchInitV1,
 ) => Promise<PublicFetchResponseV1>;
 
-export interface LotusBookingClientOptionsV1 {
+export interface BookingEngineClientOptionsV1 {
   readonly baseUrl: string;
   readonly fetch?: PublicFetchV1;
   readonly defaultPropertyId?: string;
 }
 
 /** Public consumer contract. Apps must depend on this boundary, not server internals. */
-export interface LotusBookingClientV1 {
+export interface BookingEngineClientV1 {
   readonly apiVersion: typeof PUBLIC_API_VERSION_V1;
   getPublicProperty(): Promise<PublicPropertyV1>;
   getPublicProperty(propertyId: string): Promise<PublicPropertyV1>;
@@ -258,7 +258,7 @@ function decodePublicResponse<T>(
   guard: (value: unknown) => value is T,
 ): T {
   if (!guard(body)) {
-    throw new LotusBookingApiErrorV1(status, {
+    throw new BookingEngineApiErrorV1(status, {
       code: 'internal_error',
       message: 'The public API returned an invalid response.',
     });
@@ -277,7 +277,7 @@ const PUBLIC_ERROR_CODES_V1: readonly PublicApiErrorCodeV1[] = [
   'internal_error',
 ];
 
-function decodeError(status: number, body: unknown): LotusBookingApiErrorV1 {
+function decodeError(status: number, body: unknown): BookingEngineApiErrorV1 {
   if (
     typeof body === 'object' &&
     body !== null &&
@@ -306,17 +306,17 @@ function decodeError(status: number, body: unknown): LotusBookingApiErrorV1 {
             message: rawError.message,
             details: rawError.details as NonNullable<PublicApiErrorV1['details']>,
           };
-    return new LotusBookingApiErrorV1(status, publicError);
+    return new BookingEngineApiErrorV1(status, publicError);
   }
-  return new LotusBookingApiErrorV1(status, {
+  return new BookingEngineApiErrorV1(status, {
     code: 'internal_error',
     message: 'The public API returned an invalid error response.',
   });
 }
 
-export function createLotusBookingClientV1(
-  options: LotusBookingClientOptionsV1,
-): LotusBookingClientV1 {
+export function createBookingEngineClientV1(
+  options: BookingEngineClientOptionsV1,
+): BookingEngineClientV1 {
   const baseUrl = options.baseUrl.trim();
   if (baseUrl.length === 0) {
     throw new TypeError('Public SDK baseUrl must not be empty.');

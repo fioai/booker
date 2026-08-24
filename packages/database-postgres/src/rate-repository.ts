@@ -1,11 +1,11 @@
 import type { QueryResultRow } from 'pg';
 
 import {
-  createRatePlanV1,
-  quoteRatePlanV1,
-  type QuoteBreakdownV1,
-  type RatePlanV1,
-} from '@lotus-booking/booking-core';
+  createRatePlan,
+  quoteRatePlan,
+  type QuoteBreakdown,
+  type RatePlan,
+} from '@booking-engine/booking-core';
 
 import { PersistenceError } from './persistence-errors.js';
 import type { PostgresDatabasePort, PostgresTransactionPort } from './postgres-database.js';
@@ -16,22 +16,10 @@ export interface RateOrganizationScope {
 }
 
 export interface RateRepository {
-  saveRatePlan(
-    scope: RateOrganizationScope,
-    propertyId: string,
-    input: unknown,
-  ): Promise<RatePlanV1>;
-  setRatePlan(
-    scope: RateOrganizationScope,
-    propertyId: string,
-    input: unknown,
-  ): Promise<RatePlanV1>;
-  getRatePlan(scope: RateOrganizationScope, propertyId: string): Promise<RatePlanV1 | null>;
-  quote(
-    scope: RateOrganizationScope,
-    propertyId: string,
-    input: unknown,
-  ): Promise<QuoteBreakdownV1>;
+  saveRatePlan(scope: RateOrganizationScope, propertyId: string, input: unknown): Promise<RatePlan>;
+  setRatePlan(scope: RateOrganizationScope, propertyId: string, input: unknown): Promise<RatePlan>;
+  getRatePlan(scope: RateOrganizationScope, propertyId: string): Promise<RatePlan | null>;
+  quote(scope: RateOrganizationScope, propertyId: string, input: unknown): Promise<QuoteBreakdown>;
 }
 
 interface RatePlanRow extends QueryResultRow {
@@ -74,8 +62,8 @@ function validatePropertyId(propertyId: string): string {
   return propertyId;
 }
 
-function canonicalizeRatePlan(input: unknown): RatePlanV1 {
-  const result = createRatePlanV1(input);
+function canonicalizeRatePlan(input: unknown): RatePlan {
+  const result = createRatePlan(input);
   if (!result.ok) {
     throw new PersistenceError(
       'rate_validation',
@@ -118,7 +106,7 @@ function requirePropertyQuery(
     });
 }
 
-function toRatePlan(planRow: RatePlanRow, overrideRows: readonly SeasonalRateRow[]): RatePlanV1 {
+function toRatePlan(planRow: RatePlanRow, overrideRows: readonly SeasonalRateRow[]): RatePlan {
   const input: unknown = {
     currency: planRow.currency,
     baseNightlyRateMinor: parseDatabaseMinorAmount(
@@ -151,7 +139,7 @@ export class PostgresRateRepository implements RateRepository {
     scope: RateOrganizationScope,
     propertyId: string,
     input: unknown,
-  ): Promise<RatePlanV1> {
+  ): Promise<RatePlan> {
     const organizationId = validateScope(scope);
     const id = validatePropertyId(propertyId);
     const plan = canonicalizeRatePlan(input);
@@ -216,15 +204,11 @@ export class PostgresRateRepository implements RateRepository {
     return plan;
   }
 
-  setRatePlan(
-    scope: RateOrganizationScope,
-    propertyId: string,
-    input: unknown,
-  ): Promise<RatePlanV1> {
+  setRatePlan(scope: RateOrganizationScope, propertyId: string, input: unknown): Promise<RatePlan> {
     return this.saveRatePlan(scope, propertyId, input);
   }
 
-  async getRatePlan(scope: RateOrganizationScope, propertyId: string): Promise<RatePlanV1 | null> {
+  async getRatePlan(scope: RateOrganizationScope, propertyId: string): Promise<RatePlan | null> {
     const organizationId = validateScope(scope);
     const id = validatePropertyId(propertyId);
     await this.database.withTransaction((transaction) =>
@@ -259,7 +243,7 @@ export class PostgresRateRepository implements RateRepository {
     scope: RateOrganizationScope,
     propertyId: string,
     input: unknown,
-  ): Promise<QuoteBreakdownV1> {
+  ): Promise<QuoteBreakdown> {
     const plan = await this.getRatePlan(scope, propertyId);
     if (plan === null) {
       throw new PersistenceError(
@@ -267,7 +251,7 @@ export class PostgresRateRepository implements RateRepository {
         'rate plan does not exist for this property.',
       );
     }
-    const result = quoteRatePlanV1(plan, input);
+    const result = quoteRatePlan(plan, input);
     if (!result.ok) {
       throw new PersistenceError(
         'rate_validation',

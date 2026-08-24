@@ -1,6 +1,6 @@
 import type { QueryResultRow } from 'pg';
 
-import { createLocalDateIntervalV1, type LocalDateIntervalV1 } from '@lotus-booking/booking-core';
+import { createLocalDateInterval, type LocalDateInterval } from '@booking-engine/booking-core';
 
 import { PersistenceError, isPostgresError } from './persistence-errors.js';
 import { lockProperty } from './property-lock.js';
@@ -11,34 +11,34 @@ export interface AvailabilityOrganizationScope {
   readonly organizationId: string;
 }
 
-export interface ManualBlockInputV1 {
+export interface ManualBlockInput {
   readonly id: string;
   readonly arrival: string;
   readonly departure: string;
   readonly reason: string;
 }
 
-export interface HoldInputV1 {
+export interface HoldInput {
   readonly id: string;
   readonly arrival: string;
   readonly departure: string;
   readonly expiresAt: string | Date;
 }
 
-export interface ConfirmedOccupancyInputV1 {
+export interface ConfirmedOccupancyInput {
   readonly id: string;
   readonly arrival: string;
   readonly departure: string;
 }
 
-export type AvailabilityRecordKindV1 = 'manual' | 'hold' | 'occupancy';
-export type AvailabilityRecordStatusV1 = 'active' | 'held' | 'confirmed' | 'released';
+export type AvailabilityRecordKind = 'manual' | 'hold' | 'occupancy';
+export type AvailabilityRecordStatus = 'active' | 'held' | 'confirmed' | 'released';
 
-export interface AvailabilityRecordV1 {
+export interface AvailabilityRecord {
   readonly id: string;
   readonly propertyId: string;
-  readonly kind: AvailabilityRecordKindV1;
-  readonly status: AvailabilityRecordStatusV1;
+  readonly kind: AvailabilityRecordKind;
+  readonly status: AvailabilityRecordStatus;
   readonly arrival: string;
   readonly departure: string;
   readonly expiresAt: string | null;
@@ -50,11 +50,11 @@ export interface AvailabilityRepository {
     scope: AvailabilityOrganizationScope,
     propertyId: string,
     input: unknown,
-  ): Promise<AvailabilityRecordV1>;
+  ): Promise<AvailabilityRecord>;
   listManualBlocks(
     scope: AvailabilityOrganizationScope,
     propertyId: string,
-  ): Promise<readonly AvailabilityRecordV1[]>;
+  ): Promise<readonly AvailabilityRecord[]>;
   releaseManualBlock(
     scope: AvailabilityOrganizationScope,
     propertyId: string,
@@ -64,12 +64,12 @@ export interface AvailabilityRepository {
     scope: AvailabilityOrganizationScope,
     propertyId: string,
     input: unknown,
-  ): Promise<AvailabilityRecordV1>;
+  ): Promise<AvailabilityRecord>;
   confirmHold(
     scope: AvailabilityOrganizationScope,
     propertyId: string,
     recordId: string,
-  ): Promise<AvailabilityRecordV1 | null>;
+  ): Promise<AvailabilityRecord | null>;
   releaseHold(
     scope: AvailabilityOrganizationScope,
     propertyId: string,
@@ -79,7 +79,7 @@ export interface AvailabilityRepository {
     scope: AvailabilityOrganizationScope,
     propertyId: string,
     input: unknown,
-  ): Promise<AvailabilityRecordV1>;
+  ): Promise<AvailabilityRecord>;
   releaseOccupancy(
     scope: AvailabilityOrganizationScope,
     propertyId: string,
@@ -137,8 +137,8 @@ function validateRecordId(recordId: string): string {
   return recordId;
 }
 
-function parseInterval(input: unknown): LocalDateIntervalV1 {
-  const result = createLocalDateIntervalV1(input);
+function parseInterval(input: unknown): LocalDateInterval {
+  const result = createLocalDateInterval(input);
   if (!result.ok) {
     throw new PersistenceError(
       'invalid_stay',
@@ -183,7 +183,7 @@ function parseInputRecord(value: unknown): Record<string, unknown> {
 
 function parseManualBlock(
   input: unknown,
-): ManualBlockInputV1 & { readonly interval: LocalDateIntervalV1 } {
+): ManualBlockInput & { readonly interval: LocalDateInterval } {
   const record = parseInputRecord(input);
   const id = record['id'];
   validateRecordId(id as string);
@@ -199,7 +199,7 @@ function parseManualBlock(
 
 function parseHold(
   input: unknown,
-): HoldInputV1 & { readonly interval: LocalDateIntervalV1; readonly expires: Date } {
+): HoldInput & { readonly interval: LocalDateInterval; readonly expires: Date } {
   const record = parseInputRecord(input);
   const id = record['id'];
   validateRecordId(id as string);
@@ -217,7 +217,7 @@ function parseHold(
 
 function parseConfirmedOccupancy(
   input: unknown,
-): ConfirmedOccupancyInputV1 & { readonly interval: LocalDateIntervalV1 } {
+): ConfirmedOccupancyInput & { readonly interval: LocalDateInterval } {
   const record = parseInputRecord(input);
   const id = record['id'];
   validateRecordId(id as string);
@@ -278,7 +278,7 @@ async function requireNoICalConflict(
   }
 }
 
-function mapRecord(row: AvailabilityRow): AvailabilityRecordV1 {
+function mapRecord(row: AvailabilityRow): AvailabilityRecord {
   if (
     typeof row.record_id !== 'string' ||
     typeof row.property_id !== 'string' ||
@@ -291,7 +291,7 @@ function mapRecord(row: AvailabilityRow): AvailabilityRecordV1 {
     throw new PersistenceError('database_corruption', 'availability row has an invalid shape.');
   }
   const expiresAt = row.expires_at === null ? null : new Date(row.expires_at).toISOString();
-  const status: AvailabilityRecordStatusV1 =
+  const status: AvailabilityRecordStatus =
     row.status === 'released'
       ? 'released'
       : row.block_kind === 'hold'
@@ -339,11 +339,11 @@ export class PostgresAvailabilityRepository implements AvailabilityRepository {
     scope: AvailabilityOrganizationScope,
     propertyId: string,
     id: string,
-    kind: AvailabilityRecordKindV1,
-    interval: LocalDateIntervalV1,
+    kind: AvailabilityRecordKind,
+    interval: LocalDateInterval,
     expiresAt: Date | null,
     reason: string | null,
-  ): Promise<AvailabilityRecordV1> {
+  ): Promise<AvailabilityRecord> {
     const organizationId = validateScope(scope);
     const property = validatePropertyId(propertyId);
     validateRecordId(id);
@@ -423,7 +423,7 @@ export class PostgresAvailabilityRepository implements AvailabilityRepository {
     scope: AvailabilityOrganizationScope,
     propertyId: string,
     input: unknown,
-  ): Promise<AvailabilityRecordV1> {
+  ): Promise<AvailabilityRecord> {
     const block = parseManualBlock(input);
     return this.insertRecord(
       scope,
@@ -439,7 +439,7 @@ export class PostgresAvailabilityRepository implements AvailabilityRepository {
   async listManualBlocks(
     scope: AvailabilityOrganizationScope,
     propertyId: string,
-  ): Promise<readonly AvailabilityRecordV1[]> {
+  ): Promise<readonly AvailabilityRecord[]> {
     const organizationId = validateScope(scope);
     const property = validatePropertyId(propertyId);
     await this.database.withTransaction((transaction) =>
@@ -471,7 +471,7 @@ export class PostgresAvailabilityRepository implements AvailabilityRepository {
     scope: AvailabilityOrganizationScope,
     propertyId: string,
     input: unknown,
-  ): Promise<AvailabilityRecordV1> {
+  ): Promise<AvailabilityRecord> {
     const hold = parseHold(input);
     return this.insertRecord(scope, propertyId, hold.id, 'hold', hold.interval, hold.expires, null);
   }
@@ -480,7 +480,7 @@ export class PostgresAvailabilityRepository implements AvailabilityRepository {
     scope: AvailabilityOrganizationScope,
     propertyId: string,
     recordId: string,
-  ): Promise<AvailabilityRecordV1 | null> {
+  ): Promise<AvailabilityRecord | null> {
     return this.transitionRecord(scope, propertyId, recordId, 'hold', 'occupancy', null);
   }
 
@@ -496,7 +496,7 @@ export class PostgresAvailabilityRepository implements AvailabilityRepository {
     scope: AvailabilityOrganizationScope,
     propertyId: string,
     input: unknown,
-  ): Promise<AvailabilityRecordV1> {
+  ): Promise<AvailabilityRecord> {
     const occupancy = parseConfirmedOccupancy(input);
     return this.insertRecord(
       scope,
@@ -598,7 +598,7 @@ export class PostgresAvailabilityRepository implements AvailabilityRepository {
     scope: AvailabilityOrganizationScope,
     propertyId: string,
     recordId: string,
-    kind: AvailabilityRecordKindV1,
+    kind: AvailabilityRecordKind,
   ): Promise<boolean> {
     const organizationId = validateScope(scope);
     const property = validatePropertyId(propertyId);
@@ -625,10 +625,10 @@ export class PostgresAvailabilityRepository implements AvailabilityRepository {
     scope: AvailabilityOrganizationScope,
     propertyId: string,
     recordId: string,
-    fromKind: AvailabilityRecordKindV1,
-    toKind: AvailabilityRecordKindV1,
+    fromKind: AvailabilityRecordKind,
+    toKind: AvailabilityRecordKind,
     expiresAt: Date | null,
-  ): Promise<AvailabilityRecordV1 | null> {
+  ): Promise<AvailabilityRecord | null> {
     const organizationId = validateScope(scope);
     const property = validatePropertyId(propertyId);
     const id = validateRecordId(recordId);

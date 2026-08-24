@@ -1,10 +1,10 @@
-import { ISO_4217_ACTIVE_CODES_V1 } from './iso-4217-active.js';
-import type { ResultV1 } from './property-configuration-types.js';
+import { ISO_4217_ACTIVE_CODES } from './iso-4217-active.js';
+import type { Result } from './property/configuration/types.js';
 
-const RATE_PLAN_BRAND_V1: unique symbol = Symbol('RatePlanV1');
-const canonicalRatePlansV1 = new WeakSet<object>();
+const RATE_PLAN_BRAND: unique symbol = Symbol('RatePlan');
+const canonicalRatePlans = new WeakSet<object>();
 
-export const AVAILABILITY_RATES_LIMITS_V1 = Object.freeze({
+export const AVAILABILITY_RATES_LIMITS = Object.freeze({
   minimumYear: 1,
   maximumYear: 9999,
   maximumNights: 3660,
@@ -13,18 +13,18 @@ export const AVAILABILITY_RATES_LIMITS_V1 = Object.freeze({
   maximumMinorAmount: 1_000_000_000,
 });
 
-export interface LocalDateIntervalInputV1 {
+export interface LocalDateIntervalInput {
   readonly arrival: string;
   readonly departure: string;
 }
 
-export interface LocalDateIntervalV1 {
+export interface LocalDateInterval {
   readonly arrival: string;
   readonly departure: string;
   readonly nights: number;
 }
 
-export type AvailabilityRatesValidationErrorCodeV1 =
+export type AvailabilityRatesValidationErrorCode =
   | 'invalid_input'
   | 'missing_field'
   | 'invalid_date'
@@ -42,78 +42,78 @@ export type AvailabilityRatesValidationErrorCodeV1 =
   | 'minimum_stay'
   | 'quote_total_too_large';
 
-export interface AvailabilityRatesValidationErrorV1 {
+export interface AvailabilityRatesValidationError {
   readonly field: string;
-  readonly code: AvailabilityRatesValidationErrorCodeV1;
+  readonly code: AvailabilityRatesValidationErrorCode;
   readonly message: string;
 }
 
-export type AvailabilityRatesResultV1<T> = ResultV1<T, AvailabilityRatesValidationErrorV1>;
+export type AvailabilityRatesResult<T> = Result<T, AvailabilityRatesValidationError>;
 
-export interface SeasonalRateOverrideInputV1 {
+export interface SeasonalRateOverrideInput {
   readonly arrival: string;
   readonly departure: string;
   readonly nightlyRateMinor: number;
 }
 
-export interface SeasonalRateOverrideV1 extends SeasonalRateOverrideInputV1 {
-  readonly interval: LocalDateIntervalV1;
+export interface SeasonalRateOverride extends SeasonalRateOverrideInput {
+  readonly interval: LocalDateInterval;
 }
 
-export interface RatePlanInputV1 {
+export interface RatePlanInput {
   readonly currency: string;
   readonly baseNightlyRateMinor: number;
   readonly cleaningFeeMinor: number;
   readonly minimumStayNights: number;
-  readonly seasonalOverrides?: readonly SeasonalRateOverrideInputV1[];
+  readonly seasonalOverrides?: readonly SeasonalRateOverrideInput[];
 }
 
-export interface RatePlanV1 extends RatePlanInputV1 {
-  readonly [RATE_PLAN_BRAND_V1]: typeof RATE_PLAN_BRAND_V1;
+export interface RatePlan extends RatePlanInput {
+  readonly [RATE_PLAN_BRAND]: typeof RATE_PLAN_BRAND;
   readonly currency: string;
-  readonly seasonalOverrides: readonly SeasonalRateOverrideV1[];
+  readonly seasonalOverrides: readonly SeasonalRateOverride[];
 }
 
-export type QuoteNightSourceV1 = 'base' | 'seasonal_override';
+export type QuoteNightSource = 'base' | 'seasonal_override';
 
-export interface QuoteNightV1 {
+export interface QuoteNight {
   readonly date: string;
   readonly amountMinor: number;
-  readonly source: QuoteNightSourceV1;
+  readonly source: QuoteNightSource;
 }
 
-export interface QuoteBreakdownV1 {
+export interface QuoteBreakdown {
   readonly arrival: string;
   readonly departure: string;
   readonly nights: number;
   readonly currency: string;
-  readonly nightly: readonly QuoteNightV1[];
+  readonly nightly: readonly QuoteNight[];
   readonly nightlySubtotalMinor: number;
   readonly cleaningFeeMinor: number;
   readonly totalMinor: number;
   readonly minimumStayNights: number;
 }
 
-interface ParsedLocalDateV1 {
+interface ParsedLocalDate {
   readonly text: string;
   readonly dayNumber: number;
 }
 
-function success<T>(value: T): AvailabilityRatesResultV1<T> {
+function success<T>(value: T): AvailabilityRatesResult<T> {
   return { ok: true, value };
 }
 
 function failure<T = never>(
-  errors: readonly AvailabilityRatesValidationErrorV1[],
-): AvailabilityRatesResultV1<T> {
+  errors: readonly AvailabilityRatesValidationError[],
+): AvailabilityRatesResult<T> {
   return { ok: false, errors };
 }
 
 function validationError(
   field: string,
-  code: AvailabilityRatesValidationErrorCodeV1,
+  code: AvailabilityRatesValidationErrorCode,
   message: string,
-): AvailabilityRatesValidationErrorV1 {
+): AvailabilityRatesValidationError {
   return { field, code, message };
 }
 
@@ -171,7 +171,7 @@ function formatDate(year: number, month: number, day: number): string {
     .padStart(2, '0')}`;
 }
 
-function dateAtOffset(interval: LocalDateIntervalV1, offset: number): string {
+function dateAtOffset(interval: LocalDateInterval, offset: number): string {
   const year = Number(interval.arrival.slice(0, 4));
   const month = Number(interval.arrival.slice(5, 7));
   const day = Number(interval.arrival.slice(8, 10));
@@ -182,8 +182,8 @@ function dateAtOffset(interval: LocalDateIntervalV1, offset: number): string {
 function parseLocalDate(
   value: unknown,
   field: string,
-  errors: AvailabilityRatesValidationErrorV1[],
-): ParsedLocalDateV1 | undefined {
+  errors: AvailabilityRatesValidationError[],
+): ParsedLocalDate | undefined {
   if (value === undefined) {
     errors.push(validationError(field, 'missing_field', `${field} is required.`));
     return undefined;
@@ -199,8 +199,8 @@ function parseLocalDate(
   const month = Number(value.slice(5, 7));
   const day = Number(value.slice(8, 10));
   if (
-    year < AVAILABILITY_RATES_LIMITS_V1.minimumYear ||
-    year > AVAILABILITY_RATES_LIMITS_V1.maximumYear ||
+    year < AVAILABILITY_RATES_LIMITS.minimumYear ||
+    year > AVAILABILITY_RATES_LIMITS.maximumYear ||
     month < 1 ||
     month > 12 ||
     day < 1 ||
@@ -216,8 +216,8 @@ function parseLocalDate(
 function parseInterval(
   input: unknown,
   fieldPrefix = '',
-): AvailabilityRatesResultV1<LocalDateIntervalV1> {
-  const errors: AvailabilityRatesValidationErrorV1[] = [];
+): AvailabilityRatesResult<LocalDateInterval> {
+  const errors: AvailabilityRatesValidationError[] = [];
   if (!isRecord(input)) {
     return failure([
       validationError(
@@ -245,12 +245,12 @@ function parseInterval(
   }
 
   const nights = departure.dayNumber - arrival.dayNumber;
-  if (nights > AVAILABILITY_RATES_LIMITS_V1.maximumNights) {
+  if (nights > AVAILABILITY_RATES_LIMITS.maximumNights) {
     return failure([
       validationError(
         fieldPrefix ? `${fieldPrefix}interval` : 'interval',
         'interval_too_long',
-        `interval must be at most ${AVAILABILITY_RATES_LIMITS_V1.maximumNights} nights.`,
+        `interval must be at most ${AVAILABILITY_RATES_LIMITS.maximumNights} nights.`,
       ),
     ]);
   }
@@ -258,22 +258,22 @@ function parseInterval(
   return success(Object.freeze({ arrival: arrival.text, departure: departure.text, nights }));
 }
 
-export function createLocalDateIntervalV1(
+export function createLocalDateInterval(
   input: unknown,
-): AvailabilityRatesResultV1<LocalDateIntervalV1> {
+): AvailabilityRatesResult<LocalDateInterval> {
   return parseInterval(input);
 }
 
-export function intervalsOverlapV1(
-  left: Pick<LocalDateIntervalV1, 'arrival' | 'departure'>,
-  right: Pick<LocalDateIntervalV1, 'arrival' | 'departure'>,
+export function intervalsOverlap(
+  left: Pick<LocalDateInterval, 'arrival' | 'departure'>,
+  right: Pick<LocalDateInterval, 'arrival' | 'departure'>,
 ): boolean {
   return left.arrival < right.departure && right.arrival < left.departure;
 }
 
 function readCurrency(
   value: unknown,
-  errors: AvailabilityRatesValidationErrorV1[],
+  errors: AvailabilityRatesValidationError[],
 ): string | undefined {
   if (typeof value !== 'string' || !/^[A-Za-z]{3}$/u.test(value.trim())) {
     errors.push(
@@ -282,7 +282,7 @@ function readCurrency(
     return undefined;
   }
   const currency = value.trim().toUpperCase();
-  if (!ISO_4217_ACTIVE_CODES_V1.has(currency)) {
+  if (!ISO_4217_ACTIVE_CODES.has(currency)) {
     errors.push(validationError('currency', 'unsupported_currency', 'currency is not active.'));
     return undefined;
   }
@@ -292,7 +292,7 @@ function readCurrency(
 function readMinorAmount(
   value: unknown,
   field: string,
-  errors: AvailabilityRatesValidationErrorV1[],
+  errors: AvailabilityRatesValidationError[],
 ): number | undefined {
   if (typeof value !== 'number' || !Number.isFinite(value) || !Number.isSafeInteger(value)) {
     errors.push(
@@ -308,12 +308,12 @@ function readMinorAmount(
     errors.push(validationError(field, 'negative_minor_amount', `${field} must not be negative.`));
     return undefined;
   }
-  if (value > AVAILABILITY_RATES_LIMITS_V1.maximumMinorAmount) {
+  if (value > AVAILABILITY_RATES_LIMITS.maximumMinorAmount) {
     errors.push(
       validationError(
         field,
         'minor_amount_too_large',
-        `${field} must be at most ${AVAILABILITY_RATES_LIMITS_V1.maximumMinorAmount}.`,
+        `${field} must be at most ${AVAILABILITY_RATES_LIMITS.maximumMinorAmount}.`,
       ),
     );
     return undefined;
@@ -321,12 +321,12 @@ function readMinorAmount(
   return value;
 }
 
-export function createRatePlanV1(input: unknown): AvailabilityRatesResultV1<RatePlanV1> {
+export function createRatePlan(input: unknown): AvailabilityRatesResult<RatePlan> {
   if (!isRecord(input)) {
     return failure([validationError('ratePlan', 'invalid_input', 'rate plan must be an object.')]);
   }
 
-  const errors: AvailabilityRatesValidationErrorV1[] = [];
+  const errors: AvailabilityRatesValidationError[] = [];
   const currency = readCurrency(input['currency'], errors);
   const baseNightlyRateMinor = readMinorAmount(
     input['baseNightlyRateMinor'],
@@ -339,13 +339,13 @@ export function createRatePlanV1(input: unknown): AvailabilityRatesResultV1<Rate
     typeof minimumStayNights !== 'number' ||
     !Number.isSafeInteger(minimumStayNights) ||
     minimumStayNights < 1 ||
-    minimumStayNights > AVAILABILITY_RATES_LIMITS_V1.maximumMinimumStayNights
+    minimumStayNights > AVAILABILITY_RATES_LIMITS.maximumMinimumStayNights
   ) {
     errors.push(
       validationError(
         'minimumStayNights',
         'invalid_minimum_stay',
-        `minimumStayNights must be an integer from 1 to ${AVAILABILITY_RATES_LIMITS_V1.maximumMinimumStayNights}.`,
+        `minimumStayNights must be an integer from 1 to ${AVAILABILITY_RATES_LIMITS.maximumMinimumStayNights}.`,
       ),
     );
   }
@@ -355,20 +355,20 @@ export function createRatePlanV1(input: unknown): AvailabilityRatesResultV1<Rate
     errors.push(
       validationError('seasonalOverrides', 'invalid_array', 'seasonalOverrides must be an array.'),
     );
-  } else if (rawOverrides.length > AVAILABILITY_RATES_LIMITS_V1.maximumSeasonalOverrides) {
+  } else if (rawOverrides.length > AVAILABILITY_RATES_LIMITS.maximumSeasonalOverrides) {
     errors.push(
       validationError(
         'seasonalOverrides',
         'seasonal_overrides_too_many',
-        `seasonalOverrides must contain at most ${AVAILABILITY_RATES_LIMITS_V1.maximumSeasonalOverrides} entries.`,
+        `seasonalOverrides must contain at most ${AVAILABILITY_RATES_LIMITS.maximumSeasonalOverrides} entries.`,
       ),
     );
   }
 
-  const overrides: SeasonalRateOverrideV1[] = [];
+  const overrides: SeasonalRateOverride[] = [];
   if (
     Array.isArray(rawOverrides) &&
-    rawOverrides.length <= AVAILABILITY_RATES_LIMITS_V1.maximumSeasonalOverrides
+    rawOverrides.length <= AVAILABILITY_RATES_LIMITS.maximumSeasonalOverrides
   ) {
     for (let index = 0; index < rawOverrides.length; index += 1) {
       const rawOverride = rawOverrides[index];
@@ -403,7 +403,7 @@ export function createRatePlanV1(input: unknown): AvailabilityRatesResultV1<Rate
         nightlyRateMinor,
         interval: intervalResult.value,
       });
-      if (overrides.some((existing) => intervalsOverlapV1(existing.interval, override.interval))) {
+      if (overrides.some((existing) => intervalsOverlap(existing.interval, override.interval))) {
         errors.push(
           validationError(
             `seasonalOverrides[${index}]`,
@@ -424,28 +424,28 @@ export function createRatePlanV1(input: unknown): AvailabilityRatesResultV1<Rate
     typeof minimumStayNights !== 'number' ||
     !Number.isSafeInteger(minimumStayNights) ||
     minimumStayNights < 1 ||
-    minimumStayNights > AVAILABILITY_RATES_LIMITS_V1.maximumMinimumStayNights
+    minimumStayNights > AVAILABILITY_RATES_LIMITS.maximumMinimumStayNights
   ) {
     return failure(errors);
   }
 
   const ratePlan = Object.freeze({
-    [RATE_PLAN_BRAND_V1]: RATE_PLAN_BRAND_V1,
+    [RATE_PLAN_BRAND]: RATE_PLAN_BRAND,
     currency,
     baseNightlyRateMinor,
     cleaningFeeMinor,
     minimumStayNights,
     seasonalOverrides: Object.freeze(overrides),
-  }) as RatePlanV1;
-  canonicalRatePlansV1.add(ratePlan);
+  }) as RatePlan;
+  canonicalRatePlans.add(ratePlan);
   return success(ratePlan);
 }
 
-export function quoteRatePlanV1(
-  ratePlan: RatePlanV1,
+export function quoteRatePlan(
+  ratePlan: RatePlan,
   input: unknown,
-): AvailabilityRatesResultV1<QuoteBreakdownV1> {
-  const intervalResult = createLocalDateIntervalV1(input);
+): AvailabilityRatesResult<QuoteBreakdown> {
+  const intervalResult = createLocalDateInterval(input);
   if (!intervalResult.ok) {
     return failure(intervalResult.errors);
   }
@@ -460,7 +460,7 @@ export function quoteRatePlanV1(
     ]);
   }
 
-  const nightly: QuoteNightV1[] = [];
+  const nightly: QuoteNight[] = [];
   let nightlySubtotalMinor = 0;
   for (let offset = 0; offset < interval.nights; offset += 1) {
     const date = dateAtOffset(interval, offset);
@@ -513,6 +513,6 @@ export function quoteRatePlanV1(
   );
 }
 
-export function isRatePlanV1(value: unknown): value is RatePlanV1 {
-  return isRecord(value) && canonicalRatePlansV1.has(value);
+export function isRatePlan(value: unknown): value is RatePlan {
+  return isRecord(value) && canonicalRatePlans.has(value);
 }

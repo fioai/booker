@@ -1,8 +1,8 @@
-import type { BookingCorePort } from '@lotus-booking/booking-core';
-import type { CalendarChannel } from '@lotus-booking/channel-calendar';
-import type { PostgresDatabasePort } from '@lotus-booking/database-postgres';
-import type { NotificationSender } from '@lotus-booking/notifications';
-import type { PaymentProvider } from '@lotus-booking/payments';
+import type { BookingCorePort } from '@booking-engine/booking-core';
+import type { CalendarChannel } from '@booking-engine/channel-calendar';
+import type { PostgresDatabasePort } from '@booking-engine/database-postgres';
+import type { NotificationSender } from '@booking-engine/notifications';
+import type { PaymentProvider } from '@booking-engine/payments';
 
 export interface ApiModuleDependencies {
   readonly bookingCore: BookingCorePort;
@@ -12,88 +12,88 @@ export interface ApiModuleDependencies {
   readonly notifications: NotificationSender;
 }
 
-export { serializePublicPropertyV1 } from './property-configuration-mapper.js';
+export { serializePublicProperty } from './property/configuration/mapper.js';
 export {
   PUBLIC_BOOKING_OPENAPI_PATH_V1,
   PUBLIC_BOOKING_OPENAPI_V1,
   PUBLIC_BOOKING_PATHS_V1,
-} from '@lotus-booking/sdk-typescript';
+} from '@booking-engine/sdk-typescript';
 export {
   PublicApiErrorV1,
-  PublicBookingApiErrorV1,
-  createPublicBookingApiV1,
-  createPublicBookingHttpApiV1,
-  serializePublicAvailabilityV1,
-  serializePublicBookingRequestV1,
-  serializePublicPropertyResponseV1,
-  serializePublicQuoteV1,
-  type PublicBookingApiDependenciesV1,
-  type PublicBookingApiV1,
-  type PublicBookingHttpApiV1,
-  type PublicBookingRequestRepositoryV1,
-  type PublicBookingScopeV1,
-  type PublicHttpRequestV1,
-  type PublicHttpResponseV1,
-} from './public-booking-api.js';
+  PublicBookingApiError,
+  createPublicBookingApi,
+  createPublicBookingHttpApi,
+  serializePublicAvailability,
+  serializePublicBookingRequest,
+  serializePublicPropertyResponse,
+  serializePublicQuote,
+  type PublicBookingApiDependencies,
+  type PublicBookingApi,
+  type PublicBookingHttpApi,
+  type PublicBookingRequestRepository,
+  type PublicBookingScope,
+  type PublicHttpRequest,
+  type PublicHttpResponse,
+} from './public/booking/api.js';
 export {
-  createPublicBookingHttpServerV1,
-  type PublicBookingHttpServerAddressV1,
-  type PublicBookingHttpServerOptionsV1,
-  type PublicBookingHttpServerV1,
-} from './public-booking-http-server.js';
+  createPublicBookingHttpServer,
+  type PublicBookingHttpServerAddress,
+  type PublicBookingHttpServerOptions,
+  type PublicBookingHttpServer,
+} from './public/booking/http-server.js';
 export {
-  createPaymentHttpApiV1,
-  type PaymentHttpApiOptionsV1,
-  type PaymentHttpApiV1,
-  type PaymentHttpRequestV1,
-  type PaymentHttpResponseV1,
-} from './payment-http-api.js';
+  createPaymentHttpApi,
+  type PaymentHttpApiOptions,
+  type PaymentHttpApi,
+  type PaymentHttpRequest,
+  type PaymentHttpResponse,
+} from './payment/http/api.js';
 export {
-  createAdminHttpServerV1,
-  type AdminHttpServerAddressV1,
-  type AdminHttpServerOptionsV1,
-  type AdminHttpServerV1,
-} from './admin-http-server.js';
+  createAdminHttpServer,
+  type AdminHttpServerAddress,
+  type AdminHttpServerOptions,
+  type AdminHttpServer,
+} from './admin/http-server.js';
 export {
-  ADMIN_CSRF_COOKIE_V1,
-  ADMIN_SESSION_COOKIE_V1,
-  AdminHttpErrorV1,
-  createAdminHttpApiV1,
-  type AdminCredentialRecordV1,
-  type AdminHttpApiDependenciesV1,
-  type AdminHttpApiOptionsV1,
-  type AdminHttpApiV1,
-  type AdminHttpRequestV1,
-  type AdminHttpResponseV1,
-  type AdminICalHealthPortV1,
-  type AdminPagePropertyV1,
-  type AdminRoleV1,
-} from './admin-api.js';
+  ADMIN_CSRF_COOKIE,
+  ADMIN_SESSION_COOKIE,
+  AdminHttpError,
+  createAdminHttpApi,
+  type AdminCredentialRecord,
+  type AdminHttpApiDependencies,
+  type AdminHttpApiOptions,
+  type AdminHttpApi,
+  type AdminHttpRequest,
+  type AdminHttpResponse,
+  type AdminICalHealthPort,
+  type AdminPageProperty,
+  type AdminRole,
+} from './admin/api.js';
 export {
-  ADMIN_PASSWORD_MAX_LENGTH_V1,
-  ADMIN_PASSWORD_MIN_LENGTH_V1,
-  ADMIN_SESSION_TTL_MS_V1,
-  authenticateOwnerV1,
-  createAdminSessionStoreV1,
-  hashOwnerPasswordV1,
-  normalizeAdminEmailV1,
-  verifyOwnerPasswordV1,
-  validateAdminSessionStoreOptionsV1,
-  validateAdminSessionUserV1,
-  type AdminCredentialStoreV1,
-  type AdminInMemorySessionStoreV1,
-  type AdminSessionStoreOptionsV1,
-  type AdminSessionStoreV1,
-  type AdminSessionTicketV1,
-  type AdminSessionUserV1,
-  type AdminSessionV1,
-} from './admin-auth.js';
+  ADMIN_PASSWORD_MAX_LENGTH,
+  ADMIN_PASSWORD_MIN_LENGTH,
+  ADMIN_SESSION_TTL_MS,
+  authenticateOwner,
+  createAdminSessionStore,
+  hashOwnerPassword,
+  normalizeAdminEmail,
+  verifyOwnerPassword,
+  validateAdminSessionStoreOptions,
+  validateAdminSessionUser,
+  type AdminCredentialStore,
+  type AdminInMemorySessionStore,
+  type AdminSessionStoreOptions,
+  type AdminSessionStore,
+  type AdminSessionTicket,
+  type AdminSessionUser,
+  type AdminSession,
+} from './admin/auth.js';
 export {
-  createPostgresAdminCredentialStoreV1,
-  createPostgresAdminSessionStoreV1,
-  type PostgresAdminCredentialStoreV1,
-  type PostgresAdminSessionStoreV1,
-} from './admin-postgres-auth.js';
+  createPostgresAdminCredentialStore,
+  createPostgresAdminSessionStore,
+  type PostgresAdminCredentialStore,
+  type PostgresAdminSessionStore,
+} from './admin/postgres-auth.js';
 export {
   ICalCommitAvailabilityError,
   createICalSyncJob,
@@ -108,4 +108,4 @@ export {
   type ICalSyncHealth,
   type ICalSyncJobDependencies,
   type ICalSyncRunResult,
-} from './jobs/ical-sync.js';
+} from './jobs/ical/sync.js';

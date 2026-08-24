@@ -1,8 +1,8 @@
 import type {
-  AvailabilityRatesValidationErrorV1,
-  PropertyValidationErrorV1,
-  QuoteSnapshotValidationErrorV1,
-} from '@lotus-booking/booking-core';
+  AvailabilityRatesValidationError,
+  PropertyValidationError,
+  QuoteSnapshotValidationError,
+} from '@booking-engine/booking-core';
 
 export type PersistenceErrorCode =
   | 'database_corruption'
@@ -54,9 +54,9 @@ export class PersistenceError extends Error {
   readonly code: PersistenceErrorCode;
   readonly errors:
     | readonly (
-        | PropertyValidationErrorV1
-        | AvailabilityRatesValidationErrorV1
-        | QuoteSnapshotValidationErrorV1
+        | PropertyValidationError
+        | AvailabilityRatesValidationError
+        | QuoteSnapshotValidationError
       )[]
     | undefined;
 
@@ -64,9 +64,9 @@ export class PersistenceError extends Error {
     code: PersistenceErrorCode,
     message: string,
     errors?: readonly (
-      | PropertyValidationErrorV1
-      | AvailabilityRatesValidationErrorV1
-      | QuoteSnapshotValidationErrorV1
+      | PropertyValidationError
+      | AvailabilityRatesValidationError
+      | QuoteSnapshotValidationError
     )[],
   ) {
     super(message);

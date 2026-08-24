@@ -95,7 +95,7 @@ async function main() {
     freePort(),
     freePort(),
   ]);
-  const project = 'lotus-hardening-' + process.pid + '-' + Date.now().toString(36);
+  const project = 'booking-engine-hardening-' + process.pid + '-' + Date.now().toString(36);
   const env = {
     ...process.env,
     COMPOSE_PROJECT_NAME: project,
@@ -152,15 +152,15 @@ async function main() {
       process.stdout.write(smoke.stdout.trim() + '\n');
     }
     const backupUrl =
-      'postgresql://lotus_booking_local:local-only-placeholder@127.0.0.1:' +
+      'postgresql://booking_engine_local:local-only-placeholder@127.0.0.1:' +
       postgresPort +
-      '/lotus_booking_local';
+      '/booking_engine_local';
     const backup = await run(
       process.execPath,
       [resolve(root, 'scripts/backup-restore-check.mjs')],
       {
         ...env,
-        LOTUS_ENV: 'local',
+        BOOKING_ENGINE_ENV: 'local',
         DATABASE_URL: backupUrl,
         DATABASE_SCHEMA: 'public',
         BACKUP_POSTGRES_SERVICE: 'postgres',

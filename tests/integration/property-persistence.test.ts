@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
-import type { PropertyConfigurationInputV1 } from '../../packages/booking-core/src/index.js';
+import type { PropertyConfigurationInput } from '../../packages/booking-core/src/index.js';
 import {
   createOrganizationRepository,
   createPostgresDatabase,
@@ -16,14 +16,14 @@ import {
 
 const connectionString =
   process.env['DATABASE_URL'] ??
-  'postgresql://lotus_booking_local:local-only-placeholder@127.0.0.1:5432/lotus_booking_local';
+  'postgresql://booking_engine_local:local-only-placeholder@127.0.0.1:5432/booking_engine_local';
 const runId = randomUUID().replaceAll('-', '').slice(0, 12);
 const integrationSchema = `property_test_${runId}`;
 const migrationSchema = `migration_test_${runId}`;
 
 const table = (schema: string, name: string): string => `"${schema}"."${name}"`;
 
-function makeProperty(id: string, name = 'Tenant A Garden Bungalow'): PropertyConfigurationInputV1 {
+function makeProperty(id: string, name = 'Tenant A Garden Bungalow'): PropertyConfigurationInput {
   return {
     id,
     name,

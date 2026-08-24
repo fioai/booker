@@ -3,8 +3,8 @@ import { resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 import { describe, expect, it } from 'vitest';
-import { createPropertyConfigurationV1 } from '../../packages/booking-core/src/index.js';
-import { SAMPLE_DATA_V1 } from '../../scripts/seed-sample.mjs';
+import { createPropertyConfiguration } from '../../packages/booking-core/src/index.js';
+import { SAMPLE_DATA } from '../../scripts/seed-sample.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 
@@ -20,15 +20,15 @@ function runScript(script: string, args: readonly string[] = [], env?: NodeJS.Pr
 describe('hardening entrypoints', () => {
   it('accepts an explicit local runtime environment without printing credentials', () => {
     const result = runScript('scripts/check-env.mjs', ['--runtime'], {
-      LOTUS_ENV: 'local',
+      BOOKING_ENGINE_ENV: 'local',
       DATABASE_URL:
-        'postgresql://lotus_booking_local:local-only-placeholder@127.0.0.1:15432/lotus_booking_local',
+        'postgresql://booking_engine_local:local-only-placeholder@127.0.0.1:15432/booking_engine_local',
       DATABASE_SCHEMA: 'public',
       PORT: '3000',
       HOST: '127.0.0.1',
-      LOTUS_ORGANIZATION_ID: 'sample-tenant',
-      LOTUS_PROPERTY_ID: 'sample-bungalow',
-      LOTUS_SAMPLE_DATA: 'false',
+      BOOKING_ENGINE_ORGANIZATION_ID: 'sample-tenant',
+      BOOKING_ENGINE_PROPERTY_ID: 'sample-bungalow',
+      BOOKING_ENGINE_SAMPLE_DATA: 'false',
     });
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain('Environment validation passed');
@@ -37,14 +37,14 @@ describe('hardening entrypoints', () => {
 
   it('fails closed when sample data is requested in production', () => {
     const result = runScript('scripts/check-env.mjs', ['--runtime'], {
-      LOTUS_ENV: 'production',
+      BOOKING_ENGINE_ENV: 'production',
       DATABASE_URL: 'postgresql://app:real-looking-value@example.test/booking',
       DATABASE_SCHEMA: 'public',
       PORT: '3000',
       HOST: '127.0.0.1',
-      LOTUS_ORGANIZATION_ID: 'sample-tenant',
-      LOTUS_PROPERTY_ID: 'sample-bungalow',
-      LOTUS_SAMPLE_DATA: 'true',
+      BOOKING_ENGINE_ORGANIZATION_ID: 'sample-tenant',
+      BOOKING_ENGINE_PROPERTY_ID: 'sample-bungalow',
+      BOOKING_ENGINE_SAMPLE_DATA: 'true',
     });
     expect(result.status).not.toBe(0);
     expect(`${result.stdout}${result.stderr}`).toContain('sample data is disabled');
@@ -64,19 +64,19 @@ describe('hardening entrypoints', () => {
   });
 
   it('keeps deterministic sample data valid against the domain configuration invariants', () => {
-    const result = createPropertyConfigurationV1({
-      ...SAMPLE_DATA_V1.property,
-      bedConfiguration: [...SAMPLE_DATA_V1.property.bedConfiguration],
-      amenities: [...SAMPLE_DATA_V1.property.amenities],
+    const result = createPropertyConfiguration({
+      ...SAMPLE_DATA.property,
+      bedConfiguration: [...SAMPLE_DATA.property.bedConfiguration],
+      amenities: [...SAMPLE_DATA.property.amenities],
     });
     expect(result.ok, result.ok ? undefined : JSON.stringify(result.errors)).toBe(true);
-    expect(SAMPLE_DATA_V1.property).toMatchObject({
+    expect(SAMPLE_DATA.property).toMatchObject({
       name: 'Sample Garden Bungalow',
       maximumGuests: 2,
       bedConfiguration: [{ type: 'double', quantity: 1 }],
     });
-    expect(SAMPLE_DATA_V1.rate.cleaningFeeMinor).toBe(0);
-    expect(JSON.stringify(SAMPLE_DATA_V1.property)).not.toMatch(/pool/iu);
+    expect(SAMPLE_DATA.rate.cleaningFeeMinor).toBe(0);
+    expect(JSON.stringify(SAMPLE_DATA.property)).not.toMatch(/pool/iu);
   });
 
   it('exposes real smoke, backup/restore, and secret-scan commands', () => {

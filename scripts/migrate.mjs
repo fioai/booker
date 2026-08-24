@@ -9,7 +9,7 @@ function help() {
     [
       'Usage: node scripts/migrate.mjs',
       '',
-      'Requires LOTUS_ENV, DATABASE_URL, and optional DATABASE_SCHEMA.',
+      'Requires BOOKING_ENGINE_ENV, DATABASE_URL, and optional DATABASE_SCHEMA.',
       'Refuses sample-data bootstrapping and never drops a schema.',
     ].join('\n') + '\n',
   );

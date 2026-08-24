@@ -1,11 +1,11 @@
-name: ${COMPOSE_PROJECT_NAME:-lotus-booking-hardening}
+name: ${COMPOSE_PROJECT_NAME:-booking-engine-hardening}
 
 services:
   postgres:
     image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-lotus_booking_local}
-      POSTGRES_USER: ${POSTGRES_USER:-lotus_booking_local}
+      POSTGRES_DB: ${POSTGRES_DB:-booking_engine_local}
+      POSTGRES_USER: ${POSTGRES_USER:-booking_engine_local}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-only-placeholder}
     ports:
       - '${POSTGRES_PORT:-15432}:5432'
@@ -23,15 +23,15 @@ services:
       context: .
       dockerfile: Dockerfile
     environment:
-      LOTUS_ENV: local
-      DATABASE_URL: postgresql://${POSTGRES_USER:-lotus_booking_local}:${POSTGRES_PASSWORD:-local-only-placeholder}@postgres:5432/${POSTGRES_DB:-lotus_booking_local}
+      BOOKING_ENGINE_ENV: local
+      DATABASE_URL: postgresql://${POSTGRES_USER:-booking_engine_local}:${POSTGRES_PASSWORD:-local-only-placeholder}@postgres:5432/${POSTGRES_DB:-booking_engine_local}
       DATABASE_SCHEMA: public
       HOST: 0.0.0.0
       PORT: 3000
-      LOTUS_ORGANIZATION_ID: sample-tenant
-      LOTUS_PROPERTY_ID: sample-bungalow
-      LOTUS_SAMPLE_DATA: 'true'
-      LOTUS_SAMPLE_PASSWORD: local-only-owner-password
+      BOOKING_ENGINE_ORGANIZATION_ID: sample-tenant
+      BOOKING_ENGINE_PROPERTY_ID: sample-bungalow
+      BOOKING_ENGINE_SAMPLE_DATA: 'true'
+      BOOKING_ENGINE_SAMPLE_PASSWORD: local-only-owner-password
       SECURE_COOKIES: 'false'
     depends_on:
       postgres:

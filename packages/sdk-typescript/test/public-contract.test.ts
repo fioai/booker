@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
-  createLotusBookingClientV1,
-  LotusBookingApiErrorV1,
+  createBookingEngineClientV1,
+  BookingEngineApiErrorV1,
   PUBLIC_BOOKING_CONTRACT_MANIFEST_V1,
   PublicContractValidationErrorV1,
   PUBLIC_BOOKING_OPENAPI_V1,
@@ -141,7 +141,7 @@ describe('versioned public booking contract', () => {
       };
     });
 
-    const client = createLotusBookingClientV1({
+    const client = createBookingEngineClientV1({
       baseUrl: 'https://api.example.test/',
       fetch: fetcher,
     });
@@ -165,7 +165,7 @@ describe('versioned public booking contract', () => {
 
   it('validates bounded inputs before making a network request', async () => {
     const fetcher = vi.fn();
-    const client = createLotusBookingClientV1({
+    const client = createBookingEngineClientV1({
       baseUrl: 'https://api.example.test',
       fetch: fetcher,
     });
@@ -199,7 +199,7 @@ describe('versioned public booking contract', () => {
         status: 500,
         json: async () => ({ error: { code: 'private_internal_code', message: 'secret detail' } }),
       });
-    const client = createLotusBookingClientV1({
+    const client = createBookingEngineClientV1({
       baseUrl: 'https://api.example.test',
       fetch: fetcher,
     });
@@ -212,7 +212,7 @@ describe('versioned public booking contract', () => {
     });
 
     const unknownErrorResponse = client.getProperty(property.id);
-    await expect(unknownErrorResponse).rejects.toBeInstanceOf(LotusBookingApiErrorV1);
+    await expect(unknownErrorResponse).rejects.toBeInstanceOf(BookingEngineApiErrorV1);
     await expect(unknownErrorResponse).rejects.toMatchObject({
       code: 'internal_error',
       status: 500,
@@ -226,7 +226,7 @@ describe('versioned public booking contract', () => {
       status: 200,
       json: async () => ({ ...property, propertyType: 'penthouse' }),
     }));
-    const client = createLotusBookingClientV1({
+    const client = createBookingEngineClientV1({
       baseUrl: 'https://api.example.test',
       fetch: fetcher,
     });
@@ -275,7 +275,7 @@ describe('versioned public booking contract', () => {
         },
       }),
     );
-    const client = createLotusBookingClientV1({
+    const client = createBookingEngineClientV1({
       baseUrl: 'https://api.example.test',
       fetch: fetcher,
     });
