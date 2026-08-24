@@ -1,5 +1,5 @@
 {
-  "name": "@lotus-booking/payments-stripe",
+  "name": "@booking-engine/payments-stripe",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -13,6 +13,6 @@
     "dist"
   ],
   "dependencies": {
-    "@lotus-booking/payments": "workspace:*"
+    "@booking-engine/payments": "workspace:*"
   }
 }

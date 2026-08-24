@@ -10,6 +10,9 @@ importers:
       '@eslint/js':
         specifier: 9.29.0
         version: 9.29.0
+      '@types/node':
+        specifier: 26.1.1
+        version: 26.1.1
       '@types/pg':
         specifier: ^8.20.0
         version: 8.20.0
@@ -37,34 +40,34 @@ importers:
 
   apps/admin:
     dependencies:
-      '@lotus-booking/sdk-typescript':
+      '@booking-engine/sdk-typescript':
         specifier: workspace:*
         version: link:../../packages/sdk-typescript
 
   apps/api:
     dependencies:
-      '@lotus-booking/booking-core':
+      '@booking-engine/booking-core':
         specifier: workspace:*
         version: link:../../packages/booking-core
-      '@lotus-booking/channel-calendar':
+      '@booking-engine/channel-calendar':
         specifier: workspace:*
         version: link:../../packages/channel-calendar
-      '@lotus-booking/channel-ical':
+      '@booking-engine/channel-ical':
         specifier: workspace:*
         version: link:../../packages/channel-ical
-      '@lotus-booking/database-postgres':
+      '@booking-engine/database-postgres':
         specifier: workspace:*
         version: link:../../packages/database-postgres
-      '@lotus-booking/notifications':
+      '@booking-engine/notifications':
         specifier: workspace:*
         version: link:../../packages/notifications
-      '@lotus-booking/payments':
+      '@booking-engine/payments':
         specifier: workspace:*
         version: link:../../packages/payments
-      '@lotus-booking/payments-stripe':
+      '@booking-engine/payments-stripe':
         specifier: workspace:*
         version: link:../../packages/payments-stripe
-      '@lotus-booking/sdk-typescript':
+      '@booking-engine/sdk-typescript':
         specifier: workspace:*
         version: link:../../packages/sdk-typescript
 
@@ -74,22 +77,22 @@ importers:
 
   packages/channel-ical:
     dependencies:
-      '@lotus-booking/channel-calendar':
+      '@booking-engine/channel-calendar':
         specifier: workspace:*
         version: link:../channel-calendar
 
   packages/database-postgres:
     dependencies:
-      '@lotus-booking/booking-core':
+      '@booking-engine/booking-core':
         specifier: workspace:*
         version: link:../booking-core
-      '@lotus-booking/channel-ical':
+      '@booking-engine/channel-ical':
         specifier: workspace:*
         version: link:../channel-ical
-      '@lotus-booking/payments':
+      '@booking-engine/payments':
         specifier: workspace:*
         version: link:../payments
-      '@lotus-booking/sdk-typescript':
+      '@booking-engine/sdk-typescript':
         specifier: workspace:*
         version: link:../sdk-typescript
       pg:
@@ -106,7 +109,7 @@ importers:
 
   packages/payments-stripe:
     dependencies:
-      '@lotus-booking/payments':
+      '@booking-engine/payments':
         specifier: workspace:*
         version: link:../payments
 

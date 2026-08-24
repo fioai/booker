@@ -1,4 +1,4 @@
-import type { CalendarChannel } from '@lotus-booking/channel-calendar';
+import type { CalendarChannel } from '@booking-engine/channel-calendar';
 
 import { createICalFetcher, type ICalFetcher } from './fetch.js';
 import { parseICalCalendar } from './parse.js';

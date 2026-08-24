@@ -35,7 +35,7 @@ async function applyMigrations(
   // A transaction-scoped advisory lock serializes schema creation, migration execution,
   // and marker insertion across every process using this database schema.
   await transaction.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
-    `lotus-booking:migrations:${database.schema}`,
+    `booking-engine:migrations:${database.schema}`,
   ]);
   await transaction.query(`CREATE SCHEMA IF NOT EXISTS ${schema}`);
   await transaction.query(`

@@ -7,10 +7,10 @@ import { createPostgresDatabase } from '../packages/database-postgres/dist/index
 
 import { validateRuntimeEnvironment } from './lib/environment.mjs';
 
-export const SAMPLE_DATA_V1 = Object.freeze({
+export const SAMPLE_DATA = Object.freeze({
   organization: Object.freeze({
     id: 'sample-tenant',
-    name: 'Lotus Booking local sample tenant',
+    name: 'Booking Engine local sample tenant',
   }),
   property: Object.freeze({
     id: 'sample-bungalow',
@@ -61,7 +61,7 @@ export async function seedSampleData(database, passwordHash) {
   const plans = table(schema, 'property_rate_plans');
   const identities = table(schema, 'owner_identities');
   const memberships = table(schema, 'organization_memberships');
-  const sample = SAMPLE_DATA_V1;
+  const sample = SAMPLE_DATA;
   await database.withTransaction(async (transaction) => {
     await transaction.query(
       [
@@ -149,7 +149,7 @@ function help() {
     [
       'Usage: node scripts/seed-sample.mjs',
       '',
-      'Requires LOTUS_ENV=local|test, LOTUS_SAMPLE_DATA=true, and LOTUS_SAMPLE_PASSWORD.',
+      'Requires BOOKING_ENGINE_ENV=local|test, BOOKING_ENGINE_SAMPLE_DATA=true, and BOOKING_ENGINE_SAMPLE_PASSWORD.',
       'The seed is deterministic, idempotent, and never drops tables or rows.',
     ].join('\n') + '\n',
   );
@@ -163,20 +163,20 @@ async function main() {
   const config = validateRuntimeEnvironment(process.env);
   if (
     !config.sampleData ||
-    config.organizationId !== SAMPLE_DATA_V1.organization.id ||
-    config.propertyId !== SAMPLE_DATA_V1.property.id
+    config.organizationId !== SAMPLE_DATA.organization.id ||
+    config.propertyId !== SAMPLE_DATA.property.id
   ) {
     throw new Error(
-      'sample seed requires the documented local sample identifiers and LOTUS_SAMPLE_DATA=true.',
+      'sample seed requires the documented local sample identifiers and BOOKING_ENGINE_SAMPLE_DATA=true.',
     );
   }
-  const { hashOwnerPasswordV1 } = await import('../apps/api/dist/index.js');
+  const { hashOwnerPassword } = await import('../apps/api/dist/index.js');
   const database = createPostgresDatabase({
     connectionString: config.databaseUrl,
     schema: config.schema,
   });
   try {
-    const passwordHash = await hashOwnerPasswordV1(config.samplePassword);
+    const passwordHash = await hashOwnerPassword(config.samplePassword);
     await seedSampleData(database, passwordHash);
   } finally {
     await database.close();

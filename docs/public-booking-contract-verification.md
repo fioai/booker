@@ -42,17 +42,17 @@ corepack.cmd pnpm exec vitest run packages/sdk-typescript/test/public-contract.t
 
 Result: exit `1`; 1 test file failed, 2 tests failed. The genuine missing-implementation
 failures were `Cannot read properties of undefined (reading 'openapi')` and
-`createLotusBookingClientV1 is not a function`.
+`createBookingEngineClientV1 is not a function`.
 
 API contract RED:
 
 ```text
-corepack.cmd pnpm exec vitest run apps/api/test/public-booking-api.test.ts --reporter=verbose
+corepack.cmd pnpm exec vitest run apps/api/test/public/booking/api.test.ts --reporter=verbose
 ```
 
 Result: exit `1`; 1 test file failed, 4 tests failed. The failures were missing
-`createPublicBookingApiV1`, `createPublicBookingHttpApiV1`, and
-`serializePublicQuoteV1` exports.
+`createPublicBookingApi`, `createPublicBookingHttpApi`, and
+`serializePublicQuote` exports.
 
 PostgreSQL contract RED:
 
@@ -68,7 +68,7 @@ Result: exit `1`; the PostgreSQL setup reached the tests, but both tests failed 
 Focused SDK and API GREEN:
 
 ```text
-corepack.cmd pnpm exec vitest run packages/sdk-typescript/test/public-contract.test.ts apps/api/test/public-booking-api.test.ts --reporter=verbose
+corepack.cmd pnpm exec vitest run packages/sdk-typescript/test/public-contract.test.ts apps/api/test/public/booking/api.test.ts --reporter=verbose
 ```
 
 Result: exit `0`; 2 test files passed, 11 tests passed.

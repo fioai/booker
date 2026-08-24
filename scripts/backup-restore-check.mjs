@@ -31,7 +31,7 @@ function help() {
     [
       'Usage: node scripts/backup-restore-check.mjs',
       '',
-      'Requires LOTUS_ENV=local|test, DATABASE_URL, and a running isolated PostgreSQL Compose service.',
+      'Requires BOOKING_ENGINE_ENV=local|test, DATABASE_URL, and a running isolated PostgreSQL Compose service.',
       'Uses pg_dump/pg_restore from the configured Docker Compose postgres service when host tools',
       'are unavailable. The temporary restore database is created and removed only with a hard prefix.',
     ].join('\n') + '\n',
@@ -241,7 +241,7 @@ async function main() {
   const adminUrl = new URL(parts.url.toString());
   adminUrl.pathname = '/postgres';
   const adminPool = new Pool({ connectionString: adminUrl.toString() });
-  const targetName = 'lotus_restore_' + process.pid + '_' + Date.now().toString(36);
+  const targetName = 'booking_engine_restore_' + process.pid + '_' + Date.now().toString(36);
   const targetUrl = new URL(parts.url.toString());
   targetUrl.pathname = '/' + targetName;
   let targetCreated = false;
@@ -276,7 +276,7 @@ async function main() {
     if (dump.byteLength < 128) {
       throw new Error('pg_dump produced an unexpectedly small backup.');
     }
-    tempDirectory = await mkdtemp(resolve(tmpdir(), 'lotus-booking-backup-'));
+    tempDirectory = await mkdtemp(resolve(tmpdir(), 'booking-engine-backup-'));
     const dumpPath = resolve(tempDirectory, 'source.dump');
     await writeFile(dumpPath, dump, { mode: 0o600 });
     const restoreInput = await readFile(dumpPath);

@@ -1,7 +1,7 @@
 # Booking Engine
 
 This directory is the extracted reusable booking engine for rental properties.
-It is a local, non-production extraction from the original `lotus-booking`
+It is a local, non-production extraction from the original `booking-engine`
 repository. The original repository remains the source history.
 
 ## Boundary

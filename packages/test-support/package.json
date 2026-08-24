@@ -1,5 +1,5 @@
 {
-  "name": "@lotus-booking/test-support",
+  "name": "@booking-engine/test-support",
   "version": "0.0.0",
   "private": true,
   "type": "module",

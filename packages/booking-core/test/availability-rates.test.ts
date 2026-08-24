@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  createLocalDateIntervalV1,
-  createRatePlanV1,
-  intervalsOverlapV1,
-  quoteRatePlanV1,
-  type RatePlanV1,
+  createLocalDateInterval,
+  createRatePlan,
+  intervalsOverlap,
+  quoteRatePlan,
+  type RatePlan,
 } from '../src/availability-rates.js';
 
 function validInterval(input: { arrival: string; departure: string }) {
-  const result = createLocalDateIntervalV1(input);
+  const result = createLocalDateInterval(input);
   if (!result.ok) {
     throw new Error(result.errors.map(({ field, code }) => `${field}:${code}`).join(', '));
   }
@@ -17,8 +17,8 @@ function validInterval(input: { arrival: string; departure: string }) {
   return result.value;
 }
 
-function validRatePlan(): RatePlanV1 {
-  const result = createRatePlanV1({
+function validRatePlan(): RatePlan {
+  const result = createRatePlan({
     currency: 'EUR',
     baseNightlyRateMinor: 12_500,
     cleaningFeeMinor: 3_500,
@@ -44,9 +44,9 @@ describe('bounded property-local booking intervals', () => {
     const adjacent = validInterval({ arrival: '2026-03-30', departure: '2026-04-02' });
 
     expect(first.nights).toBe(1);
-    expect(intervalsOverlapV1(first, adjacent)).toBe(false);
+    expect(intervalsOverlap(first, adjacent)).toBe(false);
     expect(
-      intervalsOverlapV1(first, validInterval({ arrival: '2026-03-29', departure: '2026-03-31' })),
+      intervalsOverlap(first, validInterval({ arrival: '2026-03-29', departure: '2026-03-31' })),
     ).toBe(true);
   });
 
@@ -56,7 +56,7 @@ describe('bounded property-local booking intervals', () => {
     [{ arrival: '2026-04-03', departure: '2026-04-02' }, 'interval:non_positive_length'],
     [{ arrival: '2026-04-02T00:00:00Z', departure: '2026-04-03' }, 'arrival:invalid_date'],
   ] as const)('rejects invalid or unbounded date input %#', (input, expected) => {
-    const result = createLocalDateIntervalV1(input);
+    const result = createLocalDateInterval(input);
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -67,7 +67,7 @@ describe('bounded property-local booking intervals', () => {
 
 describe('integer minor-unit rates and quote breakdowns', () => {
   it('prices each local night with a seasonal override and adds cleaning once', () => {
-    const quote = quoteRatePlanV1(
+    const quote = quoteRatePlan(
       validRatePlan(),
       validInterval({ arrival: '2026-07-02', departure: '2026-07-06' }),
     );
@@ -92,7 +92,7 @@ describe('integer minor-unit rates and quote breakdowns', () => {
 
   it('rejects fractional, negative, mismatched, overlapping, and below-minimum values', () => {
     expect(
-      createRatePlanV1({
+      createRatePlan({
         currency: 'EUR',
         baseNightlyRateMinor: 12_500.5,
         cleaningFeeMinor: 0,
@@ -105,7 +105,7 @@ describe('integer minor-unit rates and quote breakdowns', () => {
     });
 
     expect(
-      createRatePlanV1({
+      createRatePlan({
         currency: 'EUR',
         baseNightlyRateMinor: 12_500,
         cleaningFeeMinor: -1,
@@ -118,7 +118,7 @@ describe('integer minor-unit rates and quote breakdowns', () => {
     });
 
     expect(
-      createRatePlanV1({
+      createRatePlan({
         currency: 'EUR',
         baseNightlyRateMinor: 12_500,
         cleaningFeeMinor: 0,
@@ -133,7 +133,7 @@ describe('integer minor-unit rates and quote breakdowns', () => {
       errors: [{ field: 'seasonalOverrides[1]', code: 'overlapping_override' }],
     });
 
-    const quote = quoteRatePlanV1(
+    const quote = quoteRatePlan(
       validRatePlan(),
       validInterval({ arrival: '2026-07-02', departure: '2026-07-03' }),
     );

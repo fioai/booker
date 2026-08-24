@@ -611,10 +611,10 @@ describe('direct reservation iCalendar export', () => {
 
   it('exports a standards-shaped calendar that an independent parser can read', () => {
     const output = exportICalCalendar({
-      calendarName: 'Lotus Booking direct reservations',
+      calendarName: 'Booking Engine direct reservations',
       reservations: [
         {
-          uid: 'reservation-001@lotus-booking.invalid',
+          uid: 'reservation-001@booking-engine.invalid',
           summary: 'Direct stay',
           arrival: '2026-10-10',
           departure: '2026-10-13',
@@ -634,7 +634,7 @@ describe('direct reservation iCalendar export', () => {
 
     expect(output).toContain('BEGIN:VCALENDAR\r\n');
     expect(output).toContain('METHOD:PUBLISH\r\n');
-    expect(properties.get('UID')).toBe('reservation-001@lotus-booking.invalid');
+    expect(properties.get('UID')).toBe('reservation-001@booking-engine.invalid');
     expect(properties.get('DTSTART;VALUE=DATE')).toBe('20261010');
     expect(properties.get('DTEND;VALUE=DATE')).toBe('20261013');
     expect(properties.get('SUMMARY')).toBe('Direct stay');
@@ -646,7 +646,7 @@ describe('direct reservation iCalendar export', () => {
     const output = exportICalCalendar({
       reservations: [
         {
-          uid: 'reservation-002@lotus-booking.invalid',
+          uid: 'reservation-002@booking-engine.invalid',
           summary: 'Guest\r\nX-INJECTED:yes',
           arrival: '2026-10-10',
           departure: '2026-10-11',
@@ -660,7 +660,7 @@ describe('direct reservation iCalendar export', () => {
       exportICalCalendar({
         reservations: [
           {
-            uid: 'bad@lotus-booking.invalid',
+            uid: 'bad@booking-engine.invalid',
             summary: 'Bad',
             arrival: '2026-10-11',
             departure: '2026-10-11',
@@ -673,7 +673,7 @@ describe('direct reservation iCalendar export', () => {
       exportICalCalendar({
         reservations: [
           {
-            uid: 'year-zero@lotus-booking.invalid',
+            uid: 'year-zero@booking-engine.invalid',
             summary: 'Bad date',
             arrival: '0000-01-01',
             departure: '0000-01-02',
@@ -686,7 +686,7 @@ describe('direct reservation iCalendar export', () => {
       exportICalCalendar({
         reservations: [
           {
-            uid: ' padded-uid@lotus-booking.invalid ',
+            uid: ' padded-uid@booking-engine.invalid ',
             summary: 'Padded UID',
             arrival: '2026-10-10',
             departure: '2026-10-11',
@@ -701,7 +701,7 @@ describe('direct reservation iCalendar export', () => {
     const output = exportICalCalendar({
       reservations: [
         {
-          uid: 'reservation-unicode@lotus-booking.invalid',
+          uid: 'reservation-unicode@booking-engine.invalid',
           summary,
           arrival: '2026-10-10',
           departure: '2026-10-11',
@@ -719,7 +719,7 @@ describe('direct reservation iCalendar export', () => {
 
 describe('sync health and immediate approval/payment availability recheck', () => {
   it('records the success timestamp when reconciliation completes', async () => {
-    const { createICalSyncJob } = await import('../../../apps/api/src/jobs/ical-sync.js');
+    const { createICalSyncJob } = await import('../../../apps/api/src/jobs/ical/sync.js');
     let now = '2026-07-12T12:00:00.000Z';
     const clock = { now: () => new Date(now) };
     const job = createICalSyncJob({
@@ -744,7 +744,7 @@ describe('sync health and immediate approval/payment availability recheck', () =
   });
 
   it('records last attempt, last success, stale, and safe error state through the real job', async () => {
-    const { createICalSyncJob } = await import('../../../apps/api/src/jobs/ical-sync.js');
+    const { createICalSyncJob } = await import('../../../apps/api/src/jobs/ical/sync.js');
     const clock = createFixedClock('2026-07-12T12:00:00.000Z');
     const store = createMemoryICalBlockStore();
     const fetchFeed = vi
@@ -786,8 +786,8 @@ describe('sync health and immediate approval/payment availability recheck', () =
   });
 
   it('renders stale and failure visibly for an admin without exposing source URLs', async () => {
-    const { renderSyncHealthV1 } = await import('../../../apps/admin/src/components/sync-health');
-    const rendered = renderSyncHealthV1({
+    const { renderSyncHealth } = await import('../../../apps/admin/src/components/sync-health');
+    const rendered = renderSyncHealth({
       sourceId,
       lastAttemptAt: '2026-07-12T12:00:00.000Z',
       lastSuccessAt: '2026-07-12T10:00:00.000Z',
@@ -802,8 +802,8 @@ describe('sync health and immediate approval/payment availability recheck', () =
   });
 
   it('renders only a safe error vocabulary even when the health input is hostile', async () => {
-    const { renderSyncHealthV1 } = await import('../../../apps/admin/src/components/sync-health');
-    const rendered = renderSyncHealthV1({
+    const { renderSyncHealth } = await import('../../../apps/admin/src/components/sync-health');
+    const rendered = renderSyncHealth({
       sourceId,
       lastAttemptAt: null,
       lastSuccessAt: null,
@@ -821,7 +821,7 @@ describe('sync health and immediate approval/payment availability recheck', () =
 
   it('rechecks the tenant-scoped stay immediately before approval or payment', async () => {
     const { recheckAvailabilityBeforeCommit } = await import(
-      '../../../apps/api/src/jobs/ical-sync.js'
+      '../../../apps/api/src/jobs/ical/sync.js'
     );
     const isAvailable = vi.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(false);
     const dependencies = { isAvailable };

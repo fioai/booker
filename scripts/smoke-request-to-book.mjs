@@ -206,7 +206,7 @@ async function main() {
     throw new Error('admin login page returned HTTP ' + loginPage.status + '.');
   }
   const loginCookieHeader = mergeCookies(cookies, loginPage);
-  const anonymousCsrf = cookies.get('lotus_admin_csrf');
+  const anonymousCsrf = cookies.get('booking_engine_admin_csrf');
   if (anonymousCsrf === undefined) {
     throw new Error('admin login page did not issue a CSRF cookie.');
   }
@@ -227,8 +227,8 @@ async function main() {
     throw new Error('admin login returned invalid JSON.');
   }
   const sessionCookieHeader = mergeCookies(cookies, loginResponse);
-  const session = cookies.get('lotus_admin_session');
-  const csrf = cookies.get('lotus_admin_csrf');
+  const session = cookies.get('booking_engine_admin_session');
+  const csrf = cookies.get('booking_engine_admin_csrf');
   if (session === undefined || csrf === undefined) {
     throw new Error('admin login did not issue session and CSRF cookies.');
   }

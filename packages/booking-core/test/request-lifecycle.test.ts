@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  createQuoteSnapshotV1,
-  transitionBookingRequestV1,
-  type QuoteBreakdownV1,
+  createQuoteSnapshot,
+  transitionBookingRequest,
+  type QuoteBreakdown,
 } from '../src/index.js';
 
-const quote: QuoteBreakdownV1 = {
+const quote: QuoteBreakdown = {
   arrival: '2026-08-01',
   departure: '2026-08-03',
   nights: 2,
@@ -23,22 +23,22 @@ const quote: QuoteBreakdownV1 = {
 
 describe('request lifecycle domain', () => {
   it('allows only pending approval, rejection, or expiry transitions', () => {
-    expect(transitionBookingRequestV1('pending', 'approve')).toEqual({
+    expect(transitionBookingRequest('pending', 'approve')).toEqual({
       ok: true,
       value: 'approved',
     });
-    expect(transitionBookingRequestV1('pending', 'reject')).toEqual({
+    expect(transitionBookingRequest('pending', 'reject')).toEqual({
       ok: true,
       value: 'rejected',
     });
-    expect(transitionBookingRequestV1('pending', 'expire')).toEqual({
+    expect(transitionBookingRequest('pending', 'expire')).toEqual({
       ok: true,
       value: 'expired',
     });
   });
 
   it('reports illegal transitions without returning a next state', () => {
-    expect(transitionBookingRequestV1('approved', 'reject')).toEqual({
+    expect(transitionBookingRequest('approved', 'reject')).toEqual({
       ok: false,
       errors: [
         {
@@ -48,18 +48,18 @@ describe('request lifecycle domain', () => {
         },
       ],
     });
-    expect(transitionBookingRequestV1('expired', 'approve')).toMatchObject({
+    expect(transitionBookingRequest('expired', 'approve')).toMatchObject({
       ok: false,
       errors: [{ code: 'illegal_transition' }],
     });
-    expect(transitionBookingRequestV1('pending', 'unexpected' as never)).toMatchObject({
+    expect(transitionBookingRequest('pending', 'unexpected' as never)).toMatchObject({
       ok: false,
       errors: [{ code: 'illegal_transition', from: 'pending' }],
     });
   });
 
   it('creates an immutable, internally consistent server quote snapshot', () => {
-    const result = createQuoteSnapshotV1(quote);
+    const result = createQuoteSnapshot(quote);
 
     expect(result).toEqual({ ok: true, value: quote });
     if (!result.ok) {
@@ -74,7 +74,7 @@ describe('request lifecycle domain', () => {
   });
 
   it('rejects a quote snapshot that does not match its own bounded totals', () => {
-    const result = createQuoteSnapshotV1({ ...quote, totalMinor: 1 });
+    const result = createQuoteSnapshot({ ...quote, totalMinor: 1 });
 
     expect(result).toMatchObject({
       ok: false,
@@ -83,7 +83,7 @@ describe('request lifecycle domain', () => {
   });
 
   it('accepts safe multi-night totals above one nightly-rate bound', () => {
-    const highValueQuote: QuoteBreakdownV1 = {
+    const highValueQuote: QuoteBreakdown = {
       ...quote,
       nightly: [
         { date: '2026-08-01', amountMinor: 600_000_000, source: 'base' },
@@ -94,14 +94,14 @@ describe('request lifecycle domain', () => {
       totalMinor: 1_200_003_500,
     };
 
-    expect(createQuoteSnapshotV1(highValueQuote)).toMatchObject({
+    expect(createQuoteSnapshot(highValueQuote)).toMatchObject({
       ok: true,
       value: { nightlySubtotalMinor: 1_200_000_000, totalMinor: 1_200_003_500 },
     });
   });
 
   it('rejects a quote whose declared nights differ from its date interval', () => {
-    const result = createQuoteSnapshotV1({
+    const result = createQuoteSnapshot({
       ...quote,
       nights: 3,
       nightly: [...quote.nightly, { date: '2026-08-03', amountMinor: 12500, source: 'base' }],
@@ -116,7 +116,7 @@ describe('request lifecycle domain', () => {
   });
 
   it('rejects a nightly snapshot that exceeds the bounded night-entry count', () => {
-    const result = createQuoteSnapshotV1({
+    const result = createQuoteSnapshot({
       ...quote,
       nights: 3660,
       departure: '2036-08-08',

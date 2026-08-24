@@ -1,18 +1,14 @@
-import type { LotusBookingClientV1 } from '@lotus-booking/sdk-typescript';
+import type { BookingEngineClientV1 } from '@booking-engine/sdk-typescript';
 
 /** Admin consumers receive a public-contract client; they do not import engine internals. */
 export interface AdminApp {
-  readonly client: LotusBookingClientV1;
+  readonly client: BookingEngineClientV1;
 }
 
 export {
-  renderSyncHealthV1,
+  renderSyncHealth,
   SyncHealth,
-  type SyncHealthErrorV1,
-  type SyncHealthViewV1,
+  type SyncHealthError,
+  type SyncHealthView,
 } from './components/sync-health.js';
-export {
-  renderAdminPropertyPage,
-  renderAdminPropertyPageV1,
-  type AdminPropertyPageInputV1,
-} from './admin-property-page.js';
+export { renderAdminPropertyPage, type AdminPropertyPageInput } from './admin-property-page.js';

@@ -4,8 +4,8 @@ import { Pool } from 'pg';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type {
-  PropertyConfigurationInputV1,
-  QuoteBreakdownV1,
+  PropertyConfigurationInput,
+  QuoteBreakdown,
 } from '../../packages/booking-core/src/index.js';
 import {
   createOrganizationRepository,
@@ -15,22 +15,22 @@ import {
   createPostgresPropertyRepository,
   createRateRepository,
   runMigrations,
-  type BookingOutboxDeliveryEventV1,
-  type BookingRequestCreateInputV1,
-  type BookingRequestRepositoryV1,
-  OutboxDeliveryErrorV1,
+  type BookingOutboxDeliveryEvent,
+  type BookingRequestCreateInput,
+  type BookingRequestRepository,
+  OutboxDeliveryError,
   type PostgresDatabasePort,
 } from '../../packages/database-postgres/src/index.js';
 
 const connectionString =
   process.env['DATABASE_URL'] ??
-  'postgresql://lotus_booking_local:local-only-placeholder@127.0.0.1:5432/lotus_booking_local';
+  'postgresql://booking_engine_local:local-only-placeholder@127.0.0.1:5432/booking_engine_local';
 const runId = randomUUID().replaceAll('-', '').slice(0, 12);
 const integrationSchema = `request_lifecycle_test_${runId}`;
 const table = (name: string): string => `"${integrationSchema}"."${name}"`;
 const now = '2026-08-01T00:00:00.000Z';
 
-function makeProperty(id: string): PropertyConfigurationInputV1 {
+function makeProperty(id: string): PropertyConfigurationInput {
   return {
     id,
     name: 'Lifecycle Test Bungalow',
@@ -52,11 +52,11 @@ function makeProperty(id: string): PropertyConfigurationInputV1 {
 describe('PostgreSQL request-to-book lifecycle', () => {
   let pool: Pool | undefined;
   let database: PostgresDatabasePort | undefined;
-  let repository: BookingRequestRepositoryV1;
+  let repository: BookingRequestRepository;
   let organizationId: string;
   let otherOrganizationId: string;
   let propertyId: string;
-  let rateQuote: QuoteBreakdownV1;
+  let rateQuote: QuoteBreakdown;
   let clockNow = now;
 
   beforeAll(async () => {
@@ -107,8 +107,8 @@ describe('PostgreSQL request-to-book lifecycle', () => {
 
   function input(
     id: string,
-    overrides: Partial<BookingRequestCreateInputV1> = {},
-  ): BookingRequestCreateInputV1 {
+    overrides: Partial<BookingRequestCreateInput> = {},
+  ): BookingRequestCreateInput {
     return {
       id,
       arrival: rateQuote.arrival,
@@ -367,7 +367,7 @@ describe('PostgreSQL request-to-book lifecycle', () => {
     await repository.submit({ organizationId }, propertyId, input(`quote-key-${runId}`), {
       idempotencyKey: 'quote-key',
     });
-    const changedQuote: QuoteBreakdownV1 = {
+    const changedQuote: QuoteBreakdown = {
       ...rateQuote,
       nightly: rateQuote.nightly.map((night) => ({ ...night, amountMinor: 13000 })),
       nightlySubtotalMinor: 26000,
@@ -389,7 +389,7 @@ describe('PostgreSQL request-to-book lifecycle', () => {
       repository.submit(
         { organizationId },
         propertyId,
-        null as unknown as BookingRequestCreateInputV1,
+        null as unknown as BookingRequestCreateInput,
         { idempotencyKey: 'malformed-request' },
       ),
     ).rejects.toMatchObject({ code: 'booking_request_validation' });
@@ -532,7 +532,7 @@ describe('PostgreSQL request-to-book lifecycle', () => {
     });
     const delivery = {
       deliver: vi.fn(async () => {
-        throw new OutboxDeliveryErrorV1('temporary', 'deterministic test failure');
+        throw new OutboxDeliveryError('temporary', 'deterministic test failure');
       }),
     };
 
@@ -563,11 +563,11 @@ describe('PostgreSQL request-to-book lifecycle', () => {
     const outbox = createPostgresBookingOutboxRepository(database as PostgresDatabasePort, {
       clock: () => new Date(now),
     });
-    const delivered: BookingOutboxDeliveryEventV1[] = [];
+    const delivered: BookingOutboxDeliveryEvent[] = [];
 
     await expect(
       outbox.deliverPending({
-        deliver: vi.fn(async (event: BookingOutboxDeliveryEventV1) => {
+        deliver: vi.fn(async (event: BookingOutboxDeliveryEvent) => {
           delivered.push(event);
         }),
       }),

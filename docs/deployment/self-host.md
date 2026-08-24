@@ -24,7 +24,7 @@ generated project and volume. It never stops or removes a pre-existing project.
 
 For an interactive local stack:
 
-    docker compose --project-name lotus-booking-local up -d
+    docker compose --project-name booking-engine-local up -d
 
 The default host ports are PostgreSQL 15432, API 13000, Mailpit SMTP 11025,
 and Mailpit UI 18025. Override them with POSTGRES_PORT, API_PORT,
@@ -46,9 +46,9 @@ before validating or migrating a host-built app:
     corepack.cmd pnpm check:env:runtime
     corepack.cmd pnpm db:migrate
 
-Required runtime values are LOTUS_ENV, DATABASE_URL, DATABASE_SCHEMA (default
-public), HOST, PORT, LOTUS_ORGANIZATION_ID, and LOTUS_PROPERTY_ID.
-LOTUS_SAMPLE_DATA=true additionally requires LOTUS_SAMPLE_PASSWORD and is rejected
+Required runtime values are BOOKING_ENGINE_ENV, DATABASE_URL, DATABASE_SCHEMA (default
+public), HOST, PORT, BOOKING_ENGINE_ORGANIZATION_ID, and BOOKING_ENGINE_PROPERTY_ID.
+BOOKING_ENGINE_SAMPLE_DATA=true additionally requires BOOKING_ENGINE_SAMPLE_PASSWORD and is rejected
 in staging or production. Validation reports names, ports, and modes only; it never
 prints DATABASE_URL or a password.
 

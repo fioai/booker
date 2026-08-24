@@ -185,7 +185,7 @@ const errorResponseSchema = {
 
 export const PUBLIC_BOOKING_OPENAPI_V1: PublicOpenApiDocumentV1 = {
   openapi: '3.0.3',
-  info: { title: 'Lotus Booking Public API', version: '1.0.0' },
+  info: { title: 'Booking Engine Public API', version: '1.0.0' },
   paths: {
     [PUBLIC_BOOKING_PATHS_V1.property]: {
       get: {

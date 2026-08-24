@@ -29,13 +29,13 @@ if (sourceFiles.length === 0) {
   sourceViolations.push('SDK source contains no TypeScript files');
 }
 
-if (sourceFiles.some((entry) => entry.name === 'property-configuration-mapper.ts')) {
+if (sourceFiles.some((entry) => entry.name === 'mapper.ts')) {
   sourceViolations.push('server mapper remains in SDK source');
 }
 
 for (const sourceFile of sourceFiles) {
   const source = readFileSync(new globalThis.URL(sourceFile.name, sdkSourceDirectoryUrl), 'utf8');
-  if (/['"]@lotus-booking\/[^'"]+['"]/u.test(source)) {
+  if (/['"]@booking-engine\/[^'"]+['"]/u.test(source)) {
     sourceViolations.push(`workspace import present in ${sourceFile.name}`);
   }
 }

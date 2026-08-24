@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  createPaymentCheckoutRequestV1,
-  paymentStateTransitionV1,
+  createPaymentCheckoutRequest,
+  paymentStateTransition,
   type MoneyMinor,
-  type PaymentCheckoutRequestV1,
+  type PaymentCheckoutRequest,
 } from '../src/index.js';
 
 const validInput = {
@@ -20,7 +20,7 @@ const validInput = {
 
 describe('provider-neutral payment contracts', () => {
   it('canonicalizes a bounded server-owned checkout request', () => {
-    const result = createPaymentCheckoutRequestV1(validInput);
+    const result = createPaymentCheckoutRequest(validInput);
 
     expect(result).toEqual({ ok: true, value: validInput });
     if (!result.ok) {
@@ -37,7 +37,7 @@ describe('provider-neutral payment contracts', () => {
     ['organizationId', { organizationId: 'org with spaces' }],
     ['quoteRevision', { quoteRevision: 'private quote text' }],
   ])('rejects an invalid server-owned checkout field: %s', (_field, change) => {
-    const result = createPaymentCheckoutRequestV1({ ...validInput, ...change });
+    const result = createPaymentCheckoutRequest({ ...validInput, ...change });
 
     expect(result.ok).toBe(false);
     if (result.ok) {
@@ -48,16 +48,16 @@ describe('provider-neutral payment contracts', () => {
   });
 
   it('allows a paid state to remain paid and rejects regressions from terminal states', () => {
-    expect(paymentStateTransitionV1('open', 'succeeded')).toEqual({ ok: true, value: 'paid' });
-    expect(paymentStateTransitionV1('paid', 'failed')).toEqual({ ok: true, value: 'paid' });
-    expect(paymentStateTransitionV1('expired', 'succeeded')).toMatchObject({
+    expect(paymentStateTransition('open', 'succeeded')).toEqual({ ok: true, value: 'paid' });
+    expect(paymentStateTransition('paid', 'failed')).toEqual({ ok: true, value: 'paid' });
+    expect(paymentStateTransition('expired', 'succeeded')).toMatchObject({
       ok: false,
       error: { code: 'terminal_state' },
     });
   });
 
   it('keeps the public request type provider-neutral', () => {
-    const request: PaymentCheckoutRequestV1 = validInput;
+    const request: PaymentCheckoutRequest = validInput;
     expect('stripe' in request).toBe(false);
   });
 });

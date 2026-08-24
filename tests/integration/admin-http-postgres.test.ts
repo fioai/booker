@@ -4,14 +4,14 @@ import { Pool } from 'pg';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import type {
-  PropertyConfigurationInputV1,
-  QuoteBreakdownV1,
+  PropertyConfigurationInput,
+  QuoteBreakdown,
 } from '../../packages/booking-core/src/index.js';
 import {
-  createAdminHttpApiV1,
-  createPostgresAdminSessionStoreV1,
-  hashOwnerPasswordV1,
-  type AdminHttpApiDependenciesV1,
+  createAdminHttpApi,
+  createPostgresAdminSessionStore,
+  hashOwnerPassword,
+  type AdminHttpApiDependencies,
 } from '../../apps/api/src/index.js';
 import {
   createAvailabilityRepository,
@@ -22,19 +22,19 @@ import {
   createPostgresPropertyRepository,
   createRateRepository,
   runMigrations,
-  type BookingRequestRepositoryV1,
+  type BookingRequestRepository,
   type PostgresDatabasePort,
 } from '../../packages/database-postgres/src/index.js';
 
 const connectionString =
   process.env['DATABASE_URL'] ??
-  'postgresql://lotus_booking_local:local-only-placeholder@127.0.0.1:5432/lotus_booking_local';
+  'postgresql://booking_engine_local:local-only-placeholder@127.0.0.1:5432/booking_engine_local';
 const runId = randomUUID().replaceAll('-', '').slice(0, 12);
 const integrationSchema = `admin_http_test_${runId}`;
 const table = (name: string): string => `"${integrationSchema}"."${name}"`;
 const password = 'correct-horse-battery-staple';
 
-function makeProperty(id: string, operationalNotes: string): PropertyConfigurationInputV1 {
+function makeProperty(id: string, operationalNotes: string): PropertyConfigurationInput {
   return {
     id,
     name: 'Admin Integration Bungalow',
@@ -62,15 +62,15 @@ describe('owner admin HTTP against PostgreSQL persistence', () => {
   let ownerId: string;
   let ownerEmail: string;
   let passwordHash: string;
-  let repository: BookingRequestRepositoryV1;
-  let dependencies: AdminHttpApiDependenciesV1;
+  let repository: BookingRequestRepository;
+  let dependencies: AdminHttpApiDependencies;
 
   beforeAll(async () => {
     pool = new Pool({ connectionString });
     await pool.query('SELECT 1');
     database = createPostgresDatabase({ connectionString, schema: integrationSchema });
     await runMigrations(database);
-    passwordHash = await hashOwnerPasswordV1(password);
+    passwordHash = await hashOwnerPassword(password);
   });
 
   beforeEach(async () => {
@@ -143,13 +143,13 @@ describe('owner admin HTTP against PostgreSQL persistence', () => {
   });
 
   async function authenticatedApi(email = ownerEmail): Promise<{
-    readonly api: ReturnType<typeof createAdminHttpApiV1>;
+    readonly api: ReturnType<typeof createAdminHttpApi>;
     readonly cookies: string;
     readonly csrf: string;
   }> {
-    const api = createAdminHttpApiV1(dependencies, {
+    const api = createAdminHttpApi(dependencies, {
       secureCookies: false,
-      sessionStore: createPostgresAdminSessionStoreV1(database as PostgresDatabasePort, {
+      sessionStore: createPostgresAdminSessionStore(database as PostgresDatabasePort, {
         maxSessions: 10,
       }),
     });
@@ -157,7 +157,7 @@ describe('owner admin HTTP against PostgreSQL persistence', () => {
     const loginSetCookie = loginPage.headers?.['set-cookie'];
     const loginCookies =
       typeof loginSetCookie === 'string' ? loginSetCookie : loginSetCookie?.join(', ');
-    const anonymousCsrf = loginCookies?.match(/(?:^|,\s*)lotus_admin_csrf=([^;]+)/u)?.[1];
+    const anonymousCsrf = loginCookies?.match(/(?:^|,\s*)booking_engine_admin_csrf=([^;]+)/u)?.[1];
     if (anonymousCsrf === undefined) {
       throw new Error('integration login did not issue a CSRF cookie');
     }
@@ -165,7 +165,7 @@ describe('owner admin HTTP against PostgreSQL persistence', () => {
       method: 'POST',
       path: '/admin/login',
       headers: {
-        cookie: `lotus_admin_csrf=${anonymousCsrf}`,
+        cookie: `booking_engine_admin_csrf=${anonymousCsrf}`,
         'x-csrf-token': anonymousCsrf,
       },
       body: { email, password },
@@ -173,12 +173,16 @@ describe('owner admin HTTP against PostgreSQL persistence', () => {
     expect(login.status).toBe(200);
     const setCookie = login.headers?.['set-cookie'];
     const cookiesHeader = typeof setCookie === 'string' ? setCookie : setCookie?.join(', ');
-    const session = cookiesHeader?.match(/(?:^|,\s*)lotus_admin_session=([^;]+)/u)?.[1];
-    const csrf = cookiesHeader?.match(/(?:^|,\s*)lotus_admin_csrf=([^;]+)/u)?.[1];
+    const session = cookiesHeader?.match(/(?:^|,\s*)booking_engine_admin_session=([^;]+)/u)?.[1];
+    const csrf = cookiesHeader?.match(/(?:^|,\s*)booking_engine_admin_csrf=([^;]+)/u)?.[1];
     if (session === undefined || csrf === undefined) {
       throw new Error('integration login did not issue session cookies');
     }
-    return { api, cookies: `lotus_admin_session=${session}; lotus_admin_csrf=${csrf}`, csrf };
+    return {
+      api,
+      cookies: `booking_engine_admin_session=${session}; booking_engine_admin_csrf=${csrf}`,
+      csrf,
+    };
   }
 
   it('updates private content, rates, manual blocks, health, and booking lifecycle in tenant scope', async () => {
@@ -292,7 +296,7 @@ describe('owner admin HTTP against PostgreSQL persistence', () => {
       readonly guestName: string;
       readonly guestEmail: string;
       readonly message: string;
-      readonly quote: QuoteBreakdownV1;
+      readonly quote: QuoteBreakdown;
     };
     await repository.submit({ organizationId }, propertyId, input, {
       idempotencyKey: `idempotency-${runId}`,

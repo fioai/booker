@@ -3,7 +3,7 @@
  * maintenance agency. The domain owns this deterministic snapshot rather than
  * delegating validity to the host runtime's ICU data.
  */
-export const ISO_4217_ACTIVE_CODES_V1: ReadonlySet<string> = new Set([
+export const ISO_4217_ACTIVE_CODES: ReadonlySet<string> = new Set([
   'AED',
   'AFN',
   'ALL',

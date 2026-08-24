@@ -1,6 +1,6 @@
 import { TextEncoder } from 'node:util';
 
-export const ICAL_EXPORT_LIMITS_V1 = Object.freeze({
+export const ICAL_EXPORT_LIMITS = Object.freeze({
   maxReservations: 1_000,
   maxUidLength: 512,
   maxTextLength: 2_000,
@@ -90,7 +90,7 @@ function safeText(value: string, field: string): string {
     }
   }
   normalized = normalized.trim();
-  if (normalized.length === 0 || normalized.length > ICAL_EXPORT_LIMITS_V1.maxTextLength) {
+  if (normalized.length === 0 || normalized.length > ICAL_EXPORT_LIMITS.maxTextLength) {
     throw new TypeError(`${field} must be a bounded non-empty text value.`);
   }
   return normalized;
@@ -140,7 +140,7 @@ function validateReservation(reservation: ICalExportReservation): void {
     typeof reservation.uid !== 'string' ||
     reservation.uid.trim().length === 0 ||
     reservation.uid !== reservation.uid.trim() ||
-    reservation.uid.length > ICAL_EXPORT_LIMITS_V1.maxUidLength ||
+    reservation.uid.length > ICAL_EXPORT_LIMITS.maxUidLength ||
     hasUnsafeControlCharacters(reservation.uid)
   ) {
     throw new TypeError('reservation uid is invalid.');
@@ -150,7 +150,7 @@ function validateReservation(reservation: ICalExportReservation): void {
     throw new TypeError('reservation arrival and departure must be valid dates.');
   }
   const stayNights = nights(reservation.arrival, reservation.departure);
-  if (stayNights <= 0 || stayNights > ICAL_EXPORT_LIMITS_V1.maxNights) {
+  if (stayNights <= 0 || stayNights > ICAL_EXPORT_LIMITS.maxNights) {
     throw new TypeError('reservation departure must be after arrival within the supported bound.');
   }
 }
@@ -170,17 +170,17 @@ export function exportICalCalendar(input: ICalExportInput): string {
     typeof input !== 'object' ||
     input === null ||
     !Array.isArray(input.reservations) ||
-    input.reservations.length > ICAL_EXPORT_LIMITS_V1.maxReservations
+    input.reservations.length > ICAL_EXPORT_LIMITS.maxReservations
   ) {
     throw new TypeError('reservations must be a bounded array.');
   }
   const name =
     input.calendarName === undefined
-      ? 'Lotus Booking direct reservations'
+      ? 'Booking Engine direct reservations'
       : safeText(input.calendarName, 'calendarName');
   const prodId =
     input.prodId === undefined
-      ? '-//Lotus Booking//iCal 1.0//EN'
+      ? '-//Booking Engine//iCal 1.0//EN'
       : safeText(input.prodId, 'prodId');
   const seenUids = new Set<string>();
   const lines: string[] = [

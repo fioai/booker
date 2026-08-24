@@ -122,11 +122,13 @@ function origin(input, environment) {
 }
 
 export function validateEnvironment(input, options = {}) {
-  const environment = requiredText(input, 'LOTUS_ENV').toLowerCase();
+  const environment = requiredText(input, 'BOOKING_ENGINE_ENV').toLowerCase();
   if (!ENVIRONMENTS.has(environment)) {
-    throw new EnvironmentValidationError('LOTUS_ENV must be local, test, staging, or production.');
+    throw new EnvironmentValidationError(
+      'BOOKING_ENGINE_ENV must be local, test, staging, or production.',
+    );
   }
-  const sampleData = booleanValue(input, 'LOTUS_SAMPLE_DATA', false);
+  const sampleData = booleanValue(input, 'BOOKING_ENGINE_SAMPLE_DATA', false);
   if (sampleData && environment !== 'local' && environment !== 'test') {
     throw new EnvironmentValidationError(
       'sample data is disabled outside local and test environments.',
@@ -166,13 +168,15 @@ export function validateEnvironment(input, options = {}) {
     sampleData,
   };
   if (options.requireApplicationScope !== false) {
-    result.organizationId = identifier(input, 'LOTUS_ORGANIZATION_ID');
-    result.propertyId = identifier(input, 'LOTUS_PROPERTY_ID');
+    result.organizationId = identifier(input, 'BOOKING_ENGINE_ORGANIZATION_ID');
+    result.propertyId = identifier(input, 'BOOKING_ENGINE_PROPERTY_ID');
   }
   if (sampleData) {
-    const samplePassword = requiredText(input, 'LOTUS_SAMPLE_PASSWORD');
+    const samplePassword = requiredText(input, 'BOOKING_ENGINE_SAMPLE_PASSWORD');
     if (samplePassword.length < 12 || samplePassword.length > 256) {
-      throw new EnvironmentValidationError('LOTUS_SAMPLE_PASSWORD must be 12 to 256 characters.');
+      throw new EnvironmentValidationError(
+        'BOOKING_ENGINE_SAMPLE_PASSWORD must be 12 to 256 characters.',
+      );
     }
     result.samplePassword = samplePassword;
   }
@@ -196,7 +200,7 @@ export function validateEnvironmentTemplate(text) {
     'POSTGRES_USER',
     'POSTGRES_PASSWORD',
     'DATABASE_URL',
-    'LOTUS_ENV',
+    'BOOKING_ENGINE_ENV',
   ];
   const missing = required.filter((name) => !new RegExp('^' + name + '=', 'mu').test(text));
   if (missing.length > 0) {

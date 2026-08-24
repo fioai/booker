@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
-import type { PropertyConfigurationInputV1 } from '../../packages/booking-core/src/index.js';
+import type { PropertyConfigurationInput } from '../../packages/booking-core/src/index.js';
 import {
   createAvailabilityRepository,
   createOrganizationRepository,
@@ -14,16 +14,16 @@ import {
   runMigrations,
   type PostgresDatabasePort,
 } from '../../packages/database-postgres/src/index.js';
-import { createPublicBookingHttpServerV1 } from '../../apps/api/src/index.js';
+import { createPublicBookingHttpServer } from '../../apps/api/src/index.js';
 
 const connectionString =
   process.env['DATABASE_URL'] ??
-  'postgresql://lotus_booking_local:local-only-placeholder@127.0.0.1:5432/lotus_booking_local';
+  'postgresql://booking_engine_local:local-only-placeholder@127.0.0.1:5432/booking_engine_local';
 const runId = randomUUID().replaceAll('-', '').slice(0, 12);
 const integrationSchema = `public_api_test_${runId}`;
 const table = (name: string): string => `"${integrationSchema}"."${name}"`;
 
-function makeProperty(id: string, operationalNotes: string): PropertyConfigurationInputV1 {
+function makeProperty(id: string, operationalNotes: string): PropertyConfigurationInput {
   return {
     id,
     name: 'Public Contract Bungalow',
@@ -48,7 +48,7 @@ describe('PostgreSQL-backed public booking REST contract', () => {
   let organizationId: string;
   let otherOrganizationId: string;
   let propertyId: string;
-  let server: ReturnType<typeof createPublicBookingHttpServerV1> | undefined;
+  let server: ReturnType<typeof createPublicBookingHttpServer> | undefined;
   let baseUrl = '';
 
   beforeAll(async () => {
@@ -81,7 +81,7 @@ describe('PostgreSQL-backed public booking REST contract', () => {
       minimumStayNights: 2,
     });
 
-    server = createPublicBookingHttpServerV1(
+    server = createPublicBookingHttpServer(
       {
         properties,
         availability: createAvailabilityRepository(database as PostgresDatabasePort),
@@ -165,7 +165,7 @@ describe('PostgreSQL-backed public booking REST contract', () => {
 
   it('does not cross tenant boundaries and returns stable public errors', async () => {
     await server?.close();
-    server = createPublicBookingHttpServerV1(
+    server = createPublicBookingHttpServer(
       {
         properties: createPostgresPropertyRepository(database as PostgresDatabasePort),
         availability: createAvailabilityRepository(database as PostgresDatabasePort),

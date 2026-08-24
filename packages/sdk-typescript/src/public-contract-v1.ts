@@ -479,14 +479,14 @@ export class PublicContractValidationErrorV1 extends Error {
   }
 }
 
-export class LotusBookingApiErrorV1 extends Error {
+export class BookingEngineApiErrorV1 extends Error {
   readonly status: number;
   readonly code: PublicApiErrorCodeV1;
   readonly details: readonly PublicValidationIssueV1[] | undefined;
 
   constructor(status: number, error: PublicApiErrorV1) {
     super(error.message);
-    this.name = 'LotusBookingApiErrorV1';
+    this.name = 'BookingEngineApiErrorV1';
     this.status = status;
     this.code = error.code;
     this.details = error.details;

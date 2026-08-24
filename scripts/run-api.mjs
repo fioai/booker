@@ -32,8 +32,8 @@ async function main() {
   try {
     await databaseModule.runMigrations(database);
     if (config.sampleData) {
-      const { hashOwnerPasswordV1 } = apiModule;
-      const passwordHash = await hashOwnerPasswordV1(config.samplePassword);
+      const { hashOwnerPassword } = apiModule;
+      const passwordHash = await hashOwnerPassword(config.samplePassword);
       await seedModule.seedSampleData(database, passwordHash);
     }
 
@@ -41,9 +41,9 @@ async function main() {
     const availability = databaseModule.createAvailabilityRepository(database);
     const rates = databaseModule.createRateRepository(database);
     const bookingRequests = databaseModule.createPostgresBookingRequestRepository(database);
-    const credentials = apiModule.createPostgresAdminCredentialStoreV1(database);
-    const sessions = apiModule.createPostgresAdminSessionStoreV1(database, { maxSessions: 10 });
-    server = apiModule.createPublicBookingHttpServerV1(
+    const credentials = apiModule.createPostgresAdminCredentialStore(database);
+    const sessions = apiModule.createPostgresAdminSessionStore(database, { maxSessions: 10 });
+    server = apiModule.createPublicBookingHttpServer(
       {
         properties,
         availability,
@@ -79,7 +79,7 @@ async function main() {
     );
     await server.listen(config.port, config.host);
     process.stdout.write(
-      'Lotus Booking API listening on ' + config.host + ':' + config.port + '.\n',
+      'Booking Engine API listening on ' + config.host + ':' + config.port + '.\n',
     );
   } catch (error) {
     await database.close();
