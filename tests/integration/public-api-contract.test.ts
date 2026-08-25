@@ -5,20 +5,20 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 
 import type { PropertyConfigurationInput } from '../../packages/booking-core/src/index.js';
 import {
-  createAvailabilityRepository,
-  createOrganizationRepository,
+  createPostgresAvailabilityRepository,
+  createPostgresOrganizationRepository,
   createPostgresBookingRequestRepository,
   createPostgresDatabase,
   createPostgresPropertyRepository,
-  createRateRepository,
+  createPostgresRateRepository,
   runMigrations,
   type PostgresDatabasePort,
 } from '../../packages/database-postgres/src/index.js';
-import { createPublicBookingHttpServer } from '../../apps/api/src/index.js';
+import { createApiHttpServer } from '../../apps/api/src/index.js';
 
 const connectionString =
   process.env['DATABASE_URL'] ??
-  'postgresql://booking_engine_local:local-only-placeholder@127.0.0.1:5432/booking_engine_local';
+  'postgresql://booking_engine_local:local-only-placeholder@127.0.0.1:15432/booking_engine_local';
 const runId = randomUUID().replaceAll('-', '').slice(0, 12);
 const integrationSchema = `public_api_test_${runId}`;
 const table = (name: string): string => `"${integrationSchema}"."${name}"`;
@@ -48,7 +48,7 @@ describe('PostgreSQL-backed public booking REST contract', () => {
   let organizationId: string;
   let otherOrganizationId: string;
   let propertyId: string;
-  let server: ReturnType<typeof createPublicBookingHttpServer> | undefined;
+  let server: ReturnType<typeof createApiHttpServer> | undefined;
   let baseUrl = '';
 
   beforeAll(async () => {
@@ -64,7 +64,7 @@ describe('PostgreSQL-backed public booking REST contract', () => {
     otherOrganizationId = `org-b-${testId}`;
     propertyId = `property-${testId}`;
 
-    const organizations = createOrganizationRepository(database as PostgresDatabasePort);
+    const organizations = createPostgresOrganizationRepository(database as PostgresDatabasePort);
     const properties = createPostgresPropertyRepository(database as PostgresDatabasePort);
     await organizations.create({ id: organizationId, name: 'Public API Tenant A' });
     await organizations.create({ id: otherOrganizationId, name: 'Public API Tenant B' });
@@ -73,7 +73,7 @@ describe('PostgreSQL-backed public booking REST contract', () => {
       makeProperty(propertyId, `PRIVATE-${runId}-operational-note`),
     );
 
-    const rates = createRateRepository(database as PostgresDatabasePort);
+    const rates = createPostgresRateRepository(database as PostgresDatabasePort);
     await rates.saveRatePlan({ organizationId }, propertyId, {
       currency: 'EUR',
       baseNightlyRateMinor: 12500,
@@ -81,10 +81,10 @@ describe('PostgreSQL-backed public booking REST contract', () => {
       minimumStayNights: 2,
     });
 
-    server = createPublicBookingHttpServer(
+    server = createApiHttpServer(
       {
         properties,
-        availability: createAvailabilityRepository(database as PostgresDatabasePort),
+        availability: createPostgresAvailabilityRepository(database as PostgresDatabasePort),
         rates,
         bookingRequests: createPostgresBookingRequestRepository(database as PostgresDatabasePort),
       },
@@ -165,11 +165,11 @@ describe('PostgreSQL-backed public booking REST contract', () => {
 
   it('does not cross tenant boundaries and returns stable public errors', async () => {
     await server?.close();
-    server = createPublicBookingHttpServer(
+    server = createApiHttpServer(
       {
         properties: createPostgresPropertyRepository(database as PostgresDatabasePort),
-        availability: createAvailabilityRepository(database as PostgresDatabasePort),
-        rates: createRateRepository(database as PostgresDatabasePort),
+        availability: createPostgresAvailabilityRepository(database as PostgresDatabasePort),
+        rates: createPostgresRateRepository(database as PostgresDatabasePort),
         bookingRequests: createPostgresBookingRequestRepository(database as PostgresDatabasePort),
       },
       { scope: { organizationId: otherOrganizationId } },

@@ -10,10 +10,10 @@ import type {
   ICalEventStatus,
 } from '@booking-engine/channel-ical';
 
-import { PersistenceError, isPostgresError } from '../persistence-errors.js';
-import { lockProperty } from '../property-lock.js';
-import type { PostgresDatabasePort, PostgresTransactionPort } from '../postgres-database.js';
-import { qualifiedTable } from '../sql-identifiers.js';
+import { PersistenceError, isPostgresError } from '../database/errors.js';
+import { lockProperty } from '../database/property-lock.js';
+import type { PostgresDatabasePort, PostgresTransactionPort } from '../database/postgres.js';
+import { qualifiedTable } from '../database/identifiers.js';
 
 interface ICalBlockRow extends QueryResultRow {
   readonly organization_id: unknown;
@@ -588,8 +588,6 @@ export class PostgresICalBlockStore implements ICalBlockStore {
   }
 }
 
-export function createICalBlockStore(database: PostgresDatabasePort): ICalBlockStore {
+export function createPostgresICalBlockStore(database: PostgresDatabasePort): ICalBlockStore {
   return new PostgresICalBlockStore(database);
 }
-
-export const createPostgresICalBlockStore = createICalBlockStore;

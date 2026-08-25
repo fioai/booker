@@ -1,9 +1,0 @@
-{
-  "name": "@booking-engine/admin",
-  "version": "0.0.0",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "@booking-engine/sdk-typescript": "workspace:*"
-  }
-}

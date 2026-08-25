@@ -11,3 +11,12 @@ coverage/
 playwright-report/
 test-results/
 .DS_Store
+*.dump
+*.dump.gz
+*.sql.gz
+*.backup
+*.bak
+backups/
+backup/
+**/backups/
+**/backup/

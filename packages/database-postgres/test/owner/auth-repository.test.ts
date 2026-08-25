@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { createOwnerCredentialRepository, type PostgresDatabasePort } from '../../src/index.js';
+import {
+  createPostgresOwnerCredentialRepository,
+  type PostgresDatabasePort,
+} from '../../src/index.js';
 
 function fakeDatabase(): PostgresDatabasePort {
   const query = vi.fn(async () => ({ rows: [], rowCount: 0 }));
@@ -30,7 +33,7 @@ describe('PostgreSQL owner identity and membership repository', () => {
       ],
       rowCount: 1,
     });
-    const repository = createOwnerCredentialRepository(database);
+    const repository = createPostgresOwnerCredentialRepository(database);
 
     await expect(repository.findByEmail(' Owner@Example.test ')).resolves.toEqual({
       id: 'owner-a',
@@ -65,7 +68,7 @@ describe('PostgreSQL owner identity and membership repository', () => {
         rowCount: 1,
       })
       .mockResolvedValueOnce({ rows: [], rowCount: 1 });
-    const repository = createOwnerCredentialRepository(database);
+    const repository = createPostgresOwnerCredentialRepository(database);
 
     await expect(
       repository.create({
@@ -82,7 +85,7 @@ describe('PostgreSQL owner identity and membership repository', () => {
 
   it('rejects plaintext or unsupported credential material before opening a transaction', async () => {
     const database = fakeDatabase();
-    const repository = createOwnerCredentialRepository(database);
+    const repository = createPostgresOwnerCredentialRepository(database);
 
     await expect(
       repository.create({
@@ -98,7 +101,7 @@ describe('PostgreSQL owner identity and membership repository', () => {
 
   it('rejects scrypt parameters outside the documented application profile', async () => {
     const database = fakeDatabase();
-    const repository = createOwnerCredentialRepository(database);
+    const repository = createPostgresOwnerCredentialRepository(database);
 
     await expect(
       repository.create({

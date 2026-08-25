@@ -1,3 +1,5 @@
+> **Archived verification record:** Historical evidence only. Current gates are the root scripts and CI workflow; this dated record is not a release checklist.
+
 # Payment checkout verification
 
 This slice adds provider-neutral checkout contracts, a PostgreSQL payment state boundary,

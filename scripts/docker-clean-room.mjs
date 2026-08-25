@@ -103,6 +103,7 @@ async function main() {
     API_PORT: String(apiPort),
     MAILPIT_SMTP_PORT: String(smtpPort),
     MAILPIT_UI_PORT: String(mailpitPort),
+    ADMIN_ORIGIN: 'http://127.0.0.1:3000',
   };
   let started = false;
   try {

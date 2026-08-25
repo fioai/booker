@@ -210,11 +210,12 @@ async function main() {
   if (anonymousCsrf === undefined) {
     throw new Error('admin login page did not issue a CSRF cookie.');
   }
+  const origin = new URL(baseUrl).origin;
   const loginResponse = await fetch(
     baseUrl + '/admin/login',
     jsonOptions(
       { email: adminEmail, password: adminPassword },
-      { cookie: loginCookieHeader, 'x-csrf-token': anonymousCsrf },
+      { cookie: loginCookieHeader, 'x-csrf-token': anonymousCsrf, origin },
     ),
   );
   const loginText = await loginResponse.text();
@@ -232,7 +233,7 @@ async function main() {
   if (session === undefined || csrf === undefined) {
     throw new Error('admin login did not issue session and CSRF cookies.');
   }
-  const adminHeaders = { cookie: sessionCookieHeader, 'x-csrf-token': csrf };
+  const adminHeaders = { cookie: sessionCookieHeader, 'x-csrf-token': csrf, origin };
   const routePrefix =
     '/admin/properties/' +
     encodeURIComponent(propertyId) +

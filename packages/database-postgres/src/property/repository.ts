@@ -5,14 +5,11 @@ import {
   type PropertyValidationError,
   type PropertyConfiguration,
 } from '@booking-engine/booking-core';
-import type {
-  PublicBedConfigurationV1,
-  PublicPropertyConfigurationV1,
-} from '@booking-engine/sdk-typescript';
+import { PersistenceError, isPostgresError } from '../database/errors.js';
 
-import { PersistenceError, isPostgresError } from './persistence-errors.js';
-import type { PostgresDatabasePort } from './postgres-database.js';
-import { qualifiedTable } from './sql-identifiers.js';
+import { lockProperty } from '../database/property-lock.js';
+import type { PostgresDatabasePort } from '../database/postgres.js';
+import { qualifiedTable } from '../database/identifiers.js';
 
 const IDENTIFIER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]*$/u;
 const MAX_IDENTIFIER_LENGTH = 64;
@@ -34,8 +31,9 @@ export interface PropertyRepository {
   findPublicById(
     scope: OrganizationScope,
     propertyId: string,
-  ): Promise<PublicPropertyConfigurationV1 | null>;
-  listPublic(scope: OrganizationScope): Promise<readonly PublicPropertyConfigurationV1[]>;
+  ): Promise<PropertyConfiguration | null>;
+  /** Returns the canonical private projection; only the API mapper may serialize it externally. */
+  listPublic(scope: OrganizationScope): Promise<readonly PropertyConfiguration[]>;
 }
 
 interface StoredPropertyRow extends QueryResultRow {
@@ -173,29 +171,7 @@ function databaseCorruption(
   return new PersistenceError('database_corruption', message, errors);
 }
 
-function serializePublicProperty(property: PropertyConfiguration): PublicPropertyConfigurationV1 {
-  const bedConfiguration: readonly PublicBedConfigurationV1[] = Object.freeze(
-    property.bedConfiguration.map((bed) => Object.freeze({ ...bed })),
-  );
-
-  return Object.freeze({
-    id: property.id,
-    name: property.name,
-    summary: property.summary,
-    country: property.country,
-    timezone: property.timezone,
-    currency: property.currency,
-    propertyType: property.propertyType,
-    bedroomCount: property.bedroomCount,
-    bedConfiguration,
-    bathroomCount: property.bathroomCount,
-    maximumGuests: property.maximumGuests,
-    amenities: Object.freeze([...property.amenities]),
-    hostNotes: property.hostNotes,
-  });
-}
-
-function fromPublicRow(row: PublicPropertyRow): PublicPropertyConfigurationV1 {
+function fromPublicRow(row: PublicPropertyRow): PropertyConfiguration {
   const result = createPropertyConfiguration({
     id: row.id,
     name: row.name,
@@ -216,7 +192,7 @@ function fromPublicRow(row: PublicPropertyRow): PublicPropertyConfigurationV1 {
     throw databaseCorruption('public property row failed domain validation.', result.errors);
   }
 
-  return serializePublicProperty(result.value);
+  return result.value;
 }
 
 export class PostgresPropertyRepository implements PropertyRepository {
@@ -327,30 +303,33 @@ export class PostgresPropertyRepository implements PropertyRepository {
     const property = canonicalizeProperty(input);
     assertMatchingPropertyId(property, id);
 
-    const result = await this.database.query<StoredPropertyRow>(
-      `
-        UPDATE ${this.propertiesTable}
-        SET name = $3,
-            summary = $4,
-            country = $5,
-            timezone = $6,
-            currency = $7,
-            property_type = $8,
-            bedroom_count = $9,
-            bed_configuration = $10::jsonb,
-            bathroom_count = $11,
-            maximum_guests = $12,
-            amenities = $13::jsonb,
-            host_notes = $14,
-            operational_notes = $15,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE organization_id = $1 AND id = $2
-        RETURNING id, name, summary, country, timezone, currency, property_type,
-                  bedroom_count, bed_configuration, bathroom_count, maximum_guests,
-                  amenities, host_notes, operational_notes
-      `,
-      propertyValues(organizationId, property),
-    );
+    const result = await this.database.withTransaction(async (transaction) => {
+      await lockProperty(transaction, organizationId, id);
+      return transaction.query<StoredPropertyRow>(
+        `
+          UPDATE ${this.propertiesTable}
+          SET name = $3,
+              summary = $4,
+              country = $5,
+              timezone = $6,
+              currency = $7,
+              property_type = $8,
+              bedroom_count = $9,
+              bed_configuration = $10::jsonb,
+              bathroom_count = $11,
+              maximum_guests = $12,
+              amenities = $13::jsonb,
+              host_notes = $14,
+              operational_notes = $15,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE organization_id = $1 AND id = $2
+          RETURNING id, name, summary, country, timezone, currency, property_type,
+                    bedroom_count, bed_configuration, bathroom_count, maximum_guests,
+                    amenities, host_notes, operational_notes
+        `,
+        propertyValues(organizationId, property),
+      );
+    });
     const row = result.rows[0];
     return row === undefined ? null : fromStoredRow(row);
   }
@@ -358,17 +337,20 @@ export class PostgresPropertyRepository implements PropertyRepository {
   async delete(scope: OrganizationScope, propertyId: string): Promise<boolean> {
     const organizationId = validateScope(scope);
     const id = validatePropertyId(propertyId);
-    const result = await this.database.query(
-      `DELETE FROM ${this.propertiesTable} WHERE organization_id = $1 AND id = $2`,
-      [organizationId, id],
-    );
+    const result = await this.database.withTransaction(async (transaction) => {
+      await lockProperty(transaction, organizationId, id);
+      return transaction.query(
+        `DELETE FROM ${this.propertiesTable} WHERE organization_id = $1 AND id = $2`,
+        [organizationId, id],
+      );
+    });
     return result.rowCount === 1;
   }
 
   async findPublicById(
     scope: OrganizationScope,
     propertyId: string,
-  ): Promise<PublicPropertyConfigurationV1 | null> {
+  ): Promise<PropertyConfiguration | null> {
     const organizationId = validateScope(scope);
     const id = validatePropertyId(propertyId);
     const result = await this.database.query<PublicPropertyRow>(
@@ -385,7 +367,7 @@ export class PostgresPropertyRepository implements PropertyRepository {
     return row === undefined ? null : fromPublicRow(row);
   }
 
-  async listPublic(scope: OrganizationScope): Promise<readonly PublicPropertyConfigurationV1[]> {
+  async listPublic(scope: OrganizationScope): Promise<readonly PropertyConfiguration[]> {
     const organizationId = validateScope(scope);
     const result = await this.database.query<PublicPropertyRow>(
       `

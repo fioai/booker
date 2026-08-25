@@ -15,12 +15,12 @@ import type { ICalSyncHealth } from '../../src/jobs/ical/sync.js';
 import {
   createAdminHttpApi,
   createAdminSessionStore,
-  createPublicBookingHttpServer,
+  createApiHttpServer,
   hashOwnerPassword,
   type AdminCredentialRecord,
   type AdminHttpApiDependencies,
 } from '../../src/index.js';
-import { renderAdminPropertyPage } from '../../../../apps/admin/src/admin-property-page.js';
+import { renderPropertyPage } from '../../src/admin/views/property-page.js';
 import { sampleBungalowFixture } from '../../../../packages/booking-core/test/property/fixtures.js';
 
 const propertyId = sampleBungalowFixture.id;
@@ -85,6 +85,7 @@ const request: BookingRequestRecord = {
     minimumStayNights: 2,
   },
   createdAt: '2026-07-12T12:00:00.000Z',
+  fingerprintVersion: 'sha256-v1',
 };
 
 const health: ICalSyncHealth = {
@@ -654,7 +655,7 @@ describe('owner admin authentication, authorization, and tenant-safe HTTP behavi
   });
 
   it('renders an escaped same-domain admin page with private content and CSRF forms', () => {
-    const rendered = renderAdminPropertyPage({
+    const rendered = renderPropertyPage({
       property: {
         id: propertyId,
         name: '<Owner property>',
@@ -676,7 +677,7 @@ describe('owner admin authentication, authorization, and tenant-safe HTTP behavi
 });
 
 describe('owner admin over the real same-domain HTTP server', () => {
-  let server: ReturnType<typeof createPublicBookingHttpServer> | undefined;
+  let server: ReturnType<typeof createApiHttpServer> | undefined;
 
   afterEach(async () => {
     await server?.close();
@@ -687,7 +688,7 @@ describe('owner admin over the real same-domain HTTP server', () => {
     const passwordHash = await hashOwnerPassword(password);
     const admin = dependencies(passwordHash);
     const publicProperty = property();
-    server = createPublicBookingHttpServer(
+    server = createApiHttpServer(
       {
         properties: { findPublicById: vi.fn(async () => publicProperty) },
         availability: { isAvailable: vi.fn(async () => true) },

@@ -38,12 +38,12 @@ async function main() {
     }
 
     const properties = databaseModule.createPostgresPropertyRepository(database);
-    const availability = databaseModule.createAvailabilityRepository(database);
-    const rates = databaseModule.createRateRepository(database);
+    const availability = databaseModule.createPostgresAvailabilityRepository(database);
+    const rates = databaseModule.createPostgresRateRepository(database);
     const bookingRequests = databaseModule.createPostgresBookingRequestRepository(database);
     const credentials = apiModule.createPostgresAdminCredentialStore(database);
     const sessions = apiModule.createPostgresAdminSessionStore(database, { maxSessions: 10 });
-    server = apiModule.createPublicBookingHttpServer(
+    server = apiModule.createApiHttpServer(
       {
         properties,
         availability,

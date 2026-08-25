@@ -13,9 +13,9 @@ import {
   type ICalScope,
 } from '../../packages/channel-ical/src/index.js';
 import {
-  createAvailabilityRepository,
-  createICalBlockStore,
-  createOrganizationRepository,
+  createPostgresAvailabilityRepository,
+  createPostgresICalBlockStore,
+  createPostgresOrganizationRepository,
   createPostgresDatabase,
   createPostgresPropertyRepository,
   runMigrations,
@@ -28,7 +28,7 @@ import type { PropertyConfigurationInput } from '../../packages/booking-core/src
 
 const connectionString =
   process.env['DATABASE_URL'] ??
-  'postgresql://booking_engine_local:local-only-placeholder@127.0.0.1:5432/booking_engine_local';
+  'postgresql://booking_engine_local:local-only-placeholder@127.0.0.1:15432/booking_engine_local';
 const runId = randomUUID().replaceAll('-', '').slice(0, 12);
 const integrationSchema = `ical_sync_test_${runId}`;
 const table = (name: string): string => `"${integrationSchema}"."${name}"`;
@@ -104,10 +104,10 @@ describe('PostgreSQL iCalendar blocks and availability coexistence', () => {
     await pool.query('SELECT 1');
     database = createPostgresDatabase({ connectionString, schema: integrationSchema });
     await runMigrations(database);
-    organizations = createOrganizationRepository(database);
+    organizations = createPostgresOrganizationRepository(database);
     properties = createPostgresPropertyRepository(database);
-    availability = createAvailabilityRepository(database);
-    store = createICalBlockStore(database);
+    availability = createPostgresAvailabilityRepository(database);
+    store = createPostgresICalBlockStore(database);
   });
 
   beforeEach(async () => {
@@ -397,7 +397,7 @@ describe('PostgreSQL iCalendar blocks and availability coexistence', () => {
       const oldEvent = Object.freeze({ ...original, uid, sequence: 1 });
       await reconcileICalFeed(scope, sourceId, [oldEvent], store);
       const staleRows = await store.list(scope, sourceId);
-      const workerB = createICalBlockStore(database as PostgresDatabasePort);
+      const workerB = createPostgresICalBlockStore(database as PostgresDatabasePort);
 
       if (attempt % 2 === 0) {
         await reconcileICalFeed(
@@ -414,7 +414,10 @@ describe('PostgreSQL iCalendar blocks and availability coexistence', () => {
           scope,
           sourceId,
           [staleCancellation],
-          staleSnapshotStore(createICalBlockStore(database as PostgresDatabasePort), staleRows),
+          staleSnapshotStore(
+            createPostgresICalBlockStore(database as PostgresDatabasePort),
+            staleRows,
+          ),
         );
         expect(result.decisions).toMatchObject([
           { uid, action: 'needs_review', reason: 'stale_write' },
@@ -433,7 +436,10 @@ describe('PostgreSQL iCalendar blocks and availability coexistence', () => {
           scope,
           sourceId,
           [oldEvent],
-          staleSnapshotStore(createICalBlockStore(database as PostgresDatabasePort), staleRows),
+          staleSnapshotStore(
+            createPostgresICalBlockStore(database as PostgresDatabasePort),
+            staleRows,
+          ),
         );
         expect(result.decisions).toMatchObject([
           { uid, action: 'needs_review', reason: 'stale_write' },
@@ -459,8 +465,8 @@ describe('PostgreSQL iCalendar blocks and availability coexistence', () => {
       );
       const oldEvent = Object.freeze({ ...original, uid, sequence: 1 });
       await reconcileICalFeed(scope, sourceId, [oldEvent], store);
-      const workerA = createICalBlockStore(database as PostgresDatabasePort);
-      const workerB = createICalBlockStore(database as PostgresDatabasePort);
+      const workerA = createPostgresICalBlockStore(database as PostgresDatabasePort);
+      const workerB = createPostgresICalBlockStore(database as PostgresDatabasePort);
 
       if (attempt % 2 === 0) {
         const newerActive = Object.freeze({

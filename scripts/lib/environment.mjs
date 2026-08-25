@@ -200,7 +200,14 @@ export function validateEnvironmentTemplate(text) {
     'POSTGRES_USER',
     'POSTGRES_PASSWORD',
     'DATABASE_URL',
+    'DATABASE_SCHEMA',
     'BOOKING_ENGINE_ENV',
+    'HOST',
+    'PORT',
+    'BOOKING_ENGINE_ORGANIZATION_ID',
+    'BOOKING_ENGINE_PROPERTY_ID',
+    'ADMIN_ORIGIN',
+    'SECURE_COOKIES',
   ];
   const missing = required.filter((name) => !new RegExp('^' + name + '=', 'mu').test(text));
   if (missing.length > 0) {

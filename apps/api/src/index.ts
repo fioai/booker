@@ -1,17 +1,3 @@
-import type { BookingCorePort } from '@booking-engine/booking-core';
-import type { CalendarChannel } from '@booking-engine/channel-calendar';
-import type { PostgresDatabasePort } from '@booking-engine/database-postgres';
-import type { NotificationSender } from '@booking-engine/notifications';
-import type { PaymentProvider } from '@booking-engine/payments';
-
-export interface ApiModuleDependencies {
-  readonly bookingCore: BookingCorePort;
-  readonly database: PostgresDatabasePort;
-  readonly payments: PaymentProvider;
-  readonly calendar: CalendarChannel;
-  readonly notifications: NotificationSender;
-}
-
 export { serializePublicProperty } from './property/configuration/mapper.js';
 export {
   PUBLIC_BOOKING_OPENAPI_PATH_V1,
@@ -25,7 +11,6 @@ export {
   createPublicBookingHttpApi,
   serializePublicAvailability,
   serializePublicBookingRequest,
-  serializePublicPropertyResponse,
   serializePublicQuote,
   type PublicBookingApiDependencies,
   type PublicBookingApi,
@@ -36,11 +21,11 @@ export {
   type PublicHttpResponse,
 } from './public/booking/api.js';
 export {
-  createPublicBookingHttpServer,
-  type PublicBookingHttpServerAddress,
-  type PublicBookingHttpServerOptions,
-  type PublicBookingHttpServer,
-} from './public/booking/http-server.js';
+  createApiHttpServer,
+  type ApiHttpServerAddress,
+  type ApiHttpServerOptions,
+  type ApiHttpServer,
+} from './http/server.js';
 export {
   createPaymentHttpApi,
   type PaymentHttpApiOptions,
@@ -48,12 +33,6 @@ export {
   type PaymentHttpRequest,
   type PaymentHttpResponse,
 } from './payment/http/api.js';
-export {
-  createAdminHttpServer,
-  type AdminHttpServerAddress,
-  type AdminHttpServerOptions,
-  type AdminHttpServer,
-} from './admin/http-server.js';
 export {
   ADMIN_CSRF_COOKIE,
   ADMIN_SESSION_COOKIE,

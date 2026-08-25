@@ -785,40 +785,6 @@ describe('sync health and immediate approval/payment availability recheck', () =
     expect(JSON.stringify(health)).not.toContain('calendar.example');
   });
 
-  it('renders stale and failure visibly for an admin without exposing source URLs', async () => {
-    const { renderSyncHealth } = await import('../../../apps/admin/src/components/sync-health');
-    const rendered = renderSyncHealth({
-      sourceId,
-      lastAttemptAt: '2026-07-12T12:00:00.000Z',
-      lastSuccessAt: '2026-07-12T10:00:00.000Z',
-      stale: true,
-      error: { code: 'timeout', message: 'calendar request timed out.' },
-    });
-
-    expect(rendered).toContain('Sync needs attention');
-    expect(rendered).toContain('stale');
-    expect(rendered).toContain('timeout');
-    expect(rendered).not.toContain('https://');
-  });
-
-  it('renders only a safe error vocabulary even when the health input is hostile', async () => {
-    const { renderSyncHealth } = await import('../../../apps/admin/src/components/sync-health');
-    const rendered = renderSyncHealth({
-      sourceId,
-      lastAttemptAt: null,
-      lastSuccessAt: null,
-      stale: true,
-      error: {
-        code: 'timeout',
-        message: 'https://user:secret@example.invalid/feed?token=private',
-      },
-    });
-
-    expect(rendered).toContain('timeout');
-    expect(rendered).not.toContain('secret');
-    expect(rendered).not.toContain('https://');
-  });
-
   it('rechecks the tenant-scoped stay immediately before approval or payment', async () => {
     const { recheckAvailabilityBeforeCommit } = await import(
       '../../../apps/api/src/jobs/ical/sync.js'

@@ -1,3 +1,5 @@
+> **Archived verification record:** Historical evidence only. Current gates are the root scripts and CI workflow; this dated record is not a release checklist.
+
 # Bootstrap verification record
 
 Date: 2026-07-12
@@ -73,7 +75,7 @@ Corepack package manager through `corepack.cmd`.
 | `corepack.cmd pnpm test`                      | pass; 1 file and 2 tests                                    |
 | `corepack.cmd pnpm build`                     | pass                                                        |
 | `corepack.cmd pnpm test:integration`          | pass with no test files; no integration coverage is claimed |
-| `corepack.cmd pnpm test:e2e`                  | pass with no test files; no E2E coverage is claimed         |
+| Browser verification (historical)             | No repository E2E script exists; no claim made here.        |
 | `docker compose config`                       | pass; PostgreSQL and Mailpit services rendered              |
 
 No `docker compose up` command was run. A later `docker compose ps -a` audit could not

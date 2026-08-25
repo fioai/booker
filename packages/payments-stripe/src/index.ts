@@ -429,5 +429,3 @@ export function createStripeCheckoutAdapter(
     },
   };
 }
-
-export const createStripeTestCheckoutAdapter = createStripeCheckoutAdapter;

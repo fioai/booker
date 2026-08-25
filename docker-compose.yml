@@ -19,6 +19,7 @@ services:
       start_period: 5s
 
   app:
+    restart: on-failure
     build:
       context: .
       dockerfile: Dockerfile
@@ -32,6 +33,7 @@ services:
       BOOKING_ENGINE_PROPERTY_ID: sample-bungalow
       BOOKING_ENGINE_SAMPLE_DATA: 'true'
       BOOKING_ENGINE_SAMPLE_PASSWORD: local-only-owner-password
+      ADMIN_ORIGIN: ${ADMIN_ORIGIN:-http://127.0.0.1:13000}
       SECURE_COOKIES: 'false'
     depends_on:
       postgres:

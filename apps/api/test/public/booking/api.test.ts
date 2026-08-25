@@ -5,11 +5,7 @@ import {
   type QuoteBreakdown,
   type PropertyConfiguration,
 } from '@booking-engine/booking-core';
-import type {
-  PublicPropertyV1,
-  PublicQuoteV1,
-  PublicRequestToBookInputV1,
-} from '@booking-engine/sdk-typescript';
+import type { PublicQuoteV1, PublicRequestToBookInputV1 } from '@booking-engine/sdk-typescript';
 import type { BookingRequestRecord } from '@booking-engine/database-postgres';
 
 import {
@@ -73,13 +69,14 @@ function requestRecord(): BookingRequestRecord {
     createdAt: '2026-07-12T12:00:00.000Z',
     idempotencyKey: 'private-idempotency-key',
     requestFingerprint: 'private-request-fingerprint',
+    fingerprintVersion: 'sha256-v1',
     holdRecordId: 'private-hold-record',
     holdExpiresAt: '2026-07-12T12:15:00.000Z',
   };
 }
 
 function dependencies() {
-  const findPublicById = vi.fn<() => Promise<PublicPropertyV1 | null>>(async () => property());
+  const findPublicById = vi.fn<() => Promise<PropertyConfiguration | null>>(async () => property());
   const bookingRequests: PublicBookingRequestRepository = {
     submit: vi.fn(async () => requestRecord()),
   };

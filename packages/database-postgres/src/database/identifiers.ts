@@ -1,4 +1,4 @@
-import type { PostgresDatabasePort } from './postgres-database.js';
+import type { PostgresDatabasePort } from './postgres.js';
 
 const IDENTIFIER_PATTERN = /^[a-z_][a-z0-9_]*$/u;
 

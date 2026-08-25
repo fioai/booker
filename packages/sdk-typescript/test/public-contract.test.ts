@@ -303,4 +303,174 @@ describe('versioned public booking contract', () => {
       'idempotencyKey',
     );
   });
+  it('reports missing request options as a public validation error before fetch', async () => {
+    const fetcher = vi.fn();
+    const client = createBookingEngineClientV1({
+      baseUrl: 'https://api.example.test',
+      fetch: fetcher,
+    });
+    const input = {
+      arrival: '2026-08-01',
+      departure: '2026-08-03',
+      guestCount: 2,
+      guestName: 'Ada Lovelace',
+      guestEmail: 'ada@example.test',
+    };
+
+    await expect(
+      (client.requestToBook as unknown as (...args: unknown[]) => Promise<unknown>)(
+        property.id,
+        input,
+        undefined,
+      ),
+    ).rejects.toMatchObject({
+      name: 'PublicContractValidationErrorV1',
+      code: 'validation_failed',
+      details: [{ field: 'idempotencyKey', code: 'missing_field' }],
+    });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it('rejects inconsistent stay, quote arithmetic, and nested request payloads', async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          propertyId: property.id,
+          arrival: '2026-08-01',
+          departure: '2026-08-03',
+          nights: 1,
+          available: true,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          propertyId: property.id,
+          arrival: '2026-08-01',
+          departure: '2026-08-03',
+          nights: 2,
+          currency: 'CAD',
+          nightly: [
+            { date: '2026-08-01', amountMinor: 100, source: 'base' },
+            { date: '2026-08-02', amountMinor: 100, source: 'base' },
+          ],
+          nightlySubtotalMinor: 200,
+          cleaningFeeMinor: 25,
+          totalMinor: 999,
+          minimumStayNights: 1,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        json: async () => ({
+          id: 'request-001',
+          propertyId: property.id,
+          arrival: '2026-08-01',
+          departure: '2026-08-03',
+          nights: 2,
+          guestCount: 2,
+          status: 'pending',
+          quote: {
+            propertyId: property.id,
+            arrival: '2026-08-01',
+            departure: '2026-08-04',
+            nights: 3,
+            currency: 'CAD',
+            nightly: [
+              { date: '2026-08-01', amountMinor: 100, source: 'base' },
+              { date: '2026-08-02', amountMinor: 100, source: 'base' },
+              { date: '2026-08-03', amountMinor: 100, source: 'base' },
+            ],
+            nightlySubtotalMinor: 300,
+            cleaningFeeMinor: 25,
+            totalMinor: 325,
+            minimumStayNights: 1,
+          },
+          createdAt: '2026-07-12T12:00:00.000Z',
+        }),
+      });
+    const client = createBookingEngineClientV1({
+      baseUrl: 'https://api.example.test',
+      fetch: fetcher,
+    });
+
+    await expect(
+      client.getAvailability(property.id, { arrival: '2026-08-01', departure: '2026-08-03' }),
+    ).rejects.toMatchObject({ name: 'BookingEngineApiErrorV1', code: 'internal_error' });
+    await expect(
+      client.getQuote(property.id, { arrival: '2026-08-01', departure: '2026-08-03' }),
+    ).rejects.toMatchObject({ name: 'BookingEngineApiErrorV1', code: 'internal_error' });
+    await expect(
+      client.requestToBook(
+        property.id,
+        {
+          arrival: '2026-08-01',
+          departure: '2026-08-03',
+          guestCount: 2,
+          guestName: 'Ada Lovelace',
+          guestEmail: 'ada@example.test',
+        },
+        { idempotencyKey: 'nested-shape-key' },
+      ),
+    ).rejects.toMatchObject({ name: 'BookingEngineApiErrorV1', code: 'internal_error' });
+  });
+
+  it('rejects error details with unknown fields and accepts bounded public details', async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => ({
+          error: {
+            code: 'validation_failed',
+            message: 'Request validation failed.',
+            details: [
+              {
+                field: 'guestCount',
+                code: 'invalid_guest_count',
+                message: 'guestCount is invalid.',
+                private: 'not allowed',
+              },
+            ],
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => ({
+          error: {
+            code: 'validation_failed',
+            message: 'Request validation failed.',
+            details: [
+              {
+                field: 'guestCount',
+                code: 'invalid_guest_count',
+                message: 'guestCount is invalid.',
+              },
+            ],
+          },
+        }),
+      });
+    const client = createBookingEngineClientV1({
+      baseUrl: 'https://api.example.test',
+      fetch: fetcher,
+    });
+
+    await expect(client.getProperty(property.id)).rejects.toMatchObject({
+      code: 'internal_error',
+      status: 400,
+    });
+    await expect(client.getProperty(property.id)).rejects.toMatchObject({
+      name: 'BookingEngineApiErrorV1',
+      code: 'validation_failed',
+      details: [{ field: 'guestCount', code: 'invalid_guest_count' }],
+    });
+  });
 });

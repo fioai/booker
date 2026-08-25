@@ -2,13 +2,17 @@ import {
   BookingEngineApiErrorV1,
   PublicContractValidationErrorV1,
   PUBLIC_API_VERSION_V1,
+  PUBLIC_BOOKING_LIMITS_V1,
   validatePublicAvailabilityRequestV1,
   validatePublicPropertyIdV1,
   validatePublicRequestToBookV1,
   validatePublicIdempotencyKeyV1,
   validatePublicQuoteRequestV1,
+  validatePublicStayV1,
   type PublicApiErrorV1,
   type PublicApiErrorCodeV1,
+  type PublicValidationCodeV1,
+  type PublicValidationIssueV1,
   type PublicAvailabilityRequestV1,
   type PublicAvailabilityV1,
   type PublicPropertyV1,
@@ -61,7 +65,7 @@ export interface BookingEngineClientV1 {
   requestToBook(
     propertyId: string,
     input: PublicRequestToBookInputV1,
-    options?: PublicRequestToBookOptionsV1,
+    options: PublicRequestToBookOptionsV1,
   ): Promise<PublicRequestToBookV1>;
 }
 
@@ -95,7 +99,127 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function hasExactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
-  return Object.keys(value).length === keys.length && keys.every((key) => key in value);
+  const actualKeys = Object.keys(value);
+  return actualKeys.length === keys.length && keys.every((key) => Object.hasOwn(value, key));
+}
+
+function isIdentifier(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= PUBLIC_BOOKING_LIMITS_V1.maximumIdentifierLength &&
+    /^[A-Za-z0-9][A-Za-z0-9_-]*$/u.test(value)
+  );
+}
+
+function isIsoCurrency(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Z]{3}$/u.test(value);
+}
+
+function isSafeNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isBoundedText(value: unknown, maximum: number): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= maximum &&
+    ![...value].some((character) => {
+      const codePoint = character.codePointAt(0) ?? 0;
+      return codePoint < 32 || codePoint === 127;
+    })
+  );
+}
+
+interface ParsedPublicDateV1 {
+  readonly value: string;
+  readonly dayNumber: number;
+}
+
+function isLeapYear(year: number): boolean {
+  return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+}
+
+function daysInMonth(year: number, month: number): number {
+  if (month === 2) {
+    return isLeapYear(year) ? 29 : 28;
+  }
+  return [4, 6, 9, 11].includes(month) ? 30 : 31;
+}
+
+function daysFromCivil(year: number, month: number, day: number): number {
+  const adjustedYear = year - (month <= 2 ? 1 : 0);
+  const era = Math.floor(adjustedYear / 400);
+  const yearOfEra = adjustedYear - era * 400;
+  const monthOfYear = month + (month > 2 ? -3 : 9);
+  const dayOfYear = Math.floor((153 * monthOfYear + 2) / 5) + day - 1;
+  const dayOfEra =
+    yearOfEra * 365 + Math.floor(yearOfEra / 4) - Math.floor(yearOfEra / 100) + dayOfYear;
+  return era * 146097 + dayOfEra;
+}
+
+function civilFromDays(dayNumber: number): {
+  readonly year: number;
+  readonly month: number;
+  readonly day: number;
+} {
+  const era = Math.floor(dayNumber / 146097);
+  const dayOfEra = dayNumber - era * 146097;
+  const yearOfEra = Math.floor(
+    (dayOfEra -
+      Math.floor(dayOfEra / 1460) +
+      Math.floor(dayOfEra / 36524) -
+      Math.floor(dayOfEra / 146096)) /
+      365,
+  );
+  let year = yearOfEra + era * 400;
+  const dayOfYear =
+    dayOfEra - (365 * yearOfEra + Math.floor(yearOfEra / 4) - Math.floor(yearOfEra / 100));
+  const monthPart = Math.floor((5 * dayOfYear + 2) / 153);
+  const day = dayOfYear - Math.floor((153 * monthPart + 2) / 5) + 1;
+  const month = monthPart + (monthPart < 10 ? 3 : -9);
+  year += month <= 2 ? 1 : 0;
+  return { year, month, day };
+}
+
+function formatDate(year: number, month: number, day: number): string {
+  return `${year.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-${day
+    .toString()
+    .padStart(2, '0')}`;
+}
+
+function parsePublicDate(value: unknown): ParsedPublicDateV1 | undefined {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/u.test(value)) {
+    return undefined;
+  }
+  const year = Number(value.slice(0, 4));
+  const month = Number(value.slice(5, 7));
+  const day = Number(value.slice(8, 10));
+  if (
+    year < 1 ||
+    year > 9999 ||
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > daysInMonth(year, month)
+  ) {
+    return undefined;
+  }
+  return { value, dayNumber: daysFromCivil(year, month, day) };
+}
+
+function dateAtOffset(interval: ParsedPublicDateV1, offset: number): string {
+  const date = civilFromDays(interval.dayNumber + offset);
+  return formatDate(date.year, date.month, date.day);
+}
+
+function isPublicStayFields(value: Record<string, unknown>): boolean {
+  const interval = validatePublicStayV1({
+    arrival: value['arrival'],
+    departure: value['departure'],
+  });
+  return interval.ok && value['nights'] === interval.value.nights;
 }
 
 const PUBLIC_PROPERTY_TYPES_V1 = [
@@ -144,20 +268,28 @@ function isPublicProperty(value: unknown): value is PublicPropertyV1 {
       'amenities',
       'hostNotes',
     ]) ||
-    typeof value['id'] !== 'string' ||
-    typeof value['name'] !== 'string' ||
-    typeof value['summary'] !== 'string' ||
+    !isIdentifier(value['id']) ||
+    !isBoundedText(value['name'], 120) ||
+    !isBoundedText(value['summary'], 500) ||
     typeof value['country'] !== 'string' ||
-    typeof value['timezone'] !== 'string' ||
-    typeof value['currency'] !== 'string' ||
+    !/^[A-Z]{2}$/u.test(value['country']) ||
+    !isBoundedText(value['timezone'], 64) ||
+    !isIsoCurrency(value['currency']) ||
     !isPublicPropertyType(value['propertyType']) ||
-    typeof value['bedroomCount'] !== 'number' ||
-    typeof value['bathroomCount'] !== 'number' ||
-    typeof value['maximumGuests'] !== 'number' ||
-    typeof value['hostNotes'] !== 'string' ||
+    !isSafeNonNegativeInteger(value['bedroomCount']) ||
+    value['bedroomCount'] > 100 ||
+    !isSafeNonNegativeInteger(value['bathroomCount']) ||
+    value['bathroomCount'] > 100 ||
+    value['bathroomCount'] < 1 ||
+    !isSafeNonNegativeInteger(value['maximumGuests']) ||
+    value['maximumGuests'] > PUBLIC_BOOKING_LIMITS_V1.maximumGuestCount ||
+    value['maximumGuests'] < 1 ||
     !Array.isArray(value['bedConfiguration']) ||
+    value['bedConfiguration'].length > 16 ||
     !Array.isArray(value['amenities']) ||
-    value['amenities'].some((amenity) => typeof amenity !== 'string')
+    value['amenities'].length > 32 ||
+    !value['amenities'].every((amenity) => isBoundedText(amenity, 80)) ||
+    !isBoundedText(value['hostNotes'], 2_000)
   ) {
     return false;
   }
@@ -166,25 +298,18 @@ function isPublicProperty(value: unknown): value is PublicPropertyV1 {
       isRecord(bed) &&
       hasExactKeys(bed, ['type', 'quantity']) &&
       isPublicBedType(bed['type']) &&
-      typeof bed['quantity'] === 'number',
-  );
-}
-
-function isPublicStay(value: unknown): boolean {
-  return (
-    isRecord(value) &&
-    typeof value['arrival'] === 'string' &&
-    typeof value['departure'] === 'string' &&
-    typeof value['nights'] === 'number'
+      isSafeNonNegativeInteger(bed['quantity']) &&
+      bed['quantity'] > 0 &&
+      bed['quantity'] <= 100,
   );
 }
 
 function isPublicAvailability(value: unknown): value is PublicAvailabilityV1 {
   return (
     isRecord(value) &&
-    isPublicStay(value) &&
     hasExactKeys(value, ['propertyId', 'arrival', 'departure', 'nights', 'available']) &&
-    typeof value['propertyId'] === 'string' &&
+    isPublicStayFields(value) &&
+    isIdentifier(value['propertyId']) &&
     typeof value['available'] === 'boolean'
   );
 }
@@ -192,7 +317,6 @@ function isPublicAvailability(value: unknown): value is PublicAvailabilityV1 {
 function isPublicQuote(value: unknown): value is PublicQuoteV1 {
   if (
     !isRecord(value) ||
-    !isPublicStay(value) ||
     !hasExactKeys(value, [
       'propertyId',
       'arrival',
@@ -205,31 +329,81 @@ function isPublicQuote(value: unknown): value is PublicQuoteV1 {
       'totalMinor',
       'minimumStayNights',
     ]) ||
-    typeof value['propertyId'] !== 'string' ||
-    typeof value['currency'] !== 'string' ||
-    typeof value['nightlySubtotalMinor'] !== 'number' ||
-    typeof value['cleaningFeeMinor'] !== 'number' ||
-    typeof value['totalMinor'] !== 'number' ||
-    typeof value['minimumStayNights'] !== 'number' ||
-    !Array.isArray(value['nightly'])
+    !isPublicStayFields(value) ||
+    !isIdentifier(value['propertyId']) ||
+    !isIsoCurrency(value['currency']) ||
+    !isSafeNonNegativeInteger(value['minimumStayNights']) ||
+    value['minimumStayNights'] < 1 ||
+    value['minimumStayNights'] > PUBLIC_BOOKING_LIMITS_V1.maximumStayNights ||
+    !isSafeNonNegativeInteger(value['cleaningFeeMinor']) ||
+    !Array.isArray(value['nightly']) ||
+    value['nightly'].length !== value['nights'] ||
+    value['nightly'].length > PUBLIC_BOOKING_LIMITS_V1.maximumStayNights
   ) {
     return false;
   }
-  return value['nightly'].every(
-    (night) =>
-      isRecord(night) &&
-      hasExactKeys(night, ['date', 'amountMinor', 'source']) &&
-      typeof night['date'] === 'string' &&
-      typeof night['amountMinor'] === 'number' &&
-      (night['source'] === 'base' || night['source'] === 'seasonal_override'),
+
+  const arrival = parsePublicDate(value['arrival']);
+  if (arrival === undefined) {
+    return false;
+  }
+  let nightlySubtotalMinor = 0;
+  for (const [index, rawNight] of value['nightly'].entries()) {
+    if (
+      !isRecord(rawNight) ||
+      !hasExactKeys(rawNight, ['date', 'amountMinor', 'source']) ||
+      !isSafeNonNegativeInteger(rawNight['amountMinor']) ||
+      (rawNight['source'] !== 'base' && rawNight['source'] !== 'seasonal_override') ||
+      parsePublicDate(rawNight['date']) === undefined ||
+      rawNight['date'] !== dateAtOffset(arrival, index)
+    ) {
+      return false;
+    }
+    nightlySubtotalMinor += rawNight['amountMinor'] as number;
+    if (!Number.isSafeInteger(nightlySubtotalMinor)) {
+      return false;
+    }
+  }
+  if (
+    !isSafeNonNegativeInteger(value['nightlySubtotalMinor']) ||
+    value['nightlySubtotalMinor'] !== nightlySubtotalMinor ||
+    !isSafeNonNegativeInteger(value['totalMinor'])
+  ) {
+    return false;
+  }
+  return value['totalMinor'] === nightlySubtotalMinor + value['cleaningFeeMinor'];
+}
+
+const PUBLIC_REQUEST_STATUSES_V1 = ['pending', 'approved', 'rejected', 'expired'] as const;
+
+function isIsoTimestamp(value: unknown): value is string {
+  if (typeof value !== 'string') {
+    return false;
+  }
+  const match =
+    /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|[+-](\d{2}):(\d{2}))$/u.exec(value);
+  if (match === null || parsePublicDate(match[1]) === undefined) {
+    return false;
+  }
+  const hour = Number(match[2]);
+  const minute = Number(match[3]);
+  const second = Number(match[4]);
+  const offsetHour = match[6] === undefined ? 0 : Number(match[6]);
+  const offsetMinute = match[7] === undefined ? 0 : Number(match[7]);
+  return (
+    hour <= 23 &&
+    minute <= 59 &&
+    second <= 59 &&
+    offsetHour <= 23 &&
+    offsetMinute <= 59 &&
+    Number.isFinite(Date.parse(value))
   );
 }
 
 function isPublicRequestToBook(value: unknown): value is PublicRequestToBookV1 {
-  return (
-    isRecord(value) &&
-    isPublicStay(value) &&
-    hasExactKeys(value, [
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
       'id',
       'propertyId',
       'arrival',
@@ -239,17 +413,41 @@ function isPublicRequestToBook(value: unknown): value is PublicRequestToBookV1 {
       'status',
       'quote',
       'createdAt',
-    ]) &&
-    typeof value['id'] === 'string' &&
-    typeof value['propertyId'] === 'string' &&
-    typeof value['guestCount'] === 'number' &&
-    (value['status'] === 'pending' ||
-      value['status'] === 'approved' ||
-      value['status'] === 'rejected' ||
-      value['status'] === 'expired') &&
-    isPublicQuote(value['quote']) &&
-    typeof value['createdAt'] === 'string'
+    ]) ||
+    !isPublicStayFields(value) ||
+    !isIdentifier(value['id']) ||
+    !isIdentifier(value['propertyId']) ||
+    !isSafeNonNegativeInteger(value['guestCount']) ||
+    value['guestCount'] < 1 ||
+    value['guestCount'] > PUBLIC_BOOKING_LIMITS_V1.maximumGuestCount ||
+    !PUBLIC_REQUEST_STATUSES_V1.includes(
+      value['status'] as (typeof PUBLIC_REQUEST_STATUSES_V1)[number],
+    ) ||
+    !isPublicQuote(value['quote']) ||
+    !isIsoTimestamp(value['createdAt'])
+  ) {
+    return false;
+  }
+  const quote = value['quote'];
+  return (
+    quote.propertyId === value['propertyId'] &&
+    quote.arrival === value['arrival'] &&
+    quote.departure === value['departure'] &&
+    quote.nights === value['nights']
   );
+}
+
+type PublicV1Decoder<T> = (value: unknown) => T | undefined;
+
+function decodeV1Payload<T>(body: unknown, decoder: PublicV1Decoder<T>): T | undefined {
+  return decoder(body);
+}
+
+function invalidResponse(status: number): never {
+  throw new BookingEngineApiErrorV1(status, {
+    code: 'internal_error',
+    message: 'The public API returned an invalid response.',
+  });
 }
 
 function decodePublicResponse<T>(
@@ -257,13 +455,8 @@ function decodePublicResponse<T>(
   body: unknown,
   guard: (value: unknown) => value is T,
 ): T {
-  if (!guard(body)) {
-    throw new BookingEngineApiErrorV1(status, {
-      code: 'internal_error',
-      message: 'The public API returned an invalid response.',
-    });
-  }
-  return body;
+  const decoded = decodeV1Payload(body, (value) => (guard(value) ? value : undefined));
+  return decoded === undefined ? invalidResponse(status) : decoded;
 }
 
 const PUBLIC_ERROR_CODES_V1: readonly PublicApiErrorCodeV1[] = [
@@ -277,35 +470,80 @@ const PUBLIC_ERROR_CODES_V1: readonly PublicApiErrorCodeV1[] = [
   'internal_error',
 ];
 
-function decodeError(status: number, body: unknown): BookingEngineApiErrorV1 {
+const PUBLIC_VALIDATION_CODES_V1: readonly PublicValidationCodeV1[] = [
+  'invalid_input',
+  'missing_field',
+  'invalid_string',
+  'empty_string',
+  'string_too_long',
+  'invalid_identifier',
+  'invalid_date',
+  'non_positive_length',
+  'interval_too_long',
+  'invalid_guest_count',
+  'invalid_email',
+  'invalid_value',
+  'unknown_field',
+];
+
+function isBoundedErrorField(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= 128 &&
+    /^[A-Za-z][A-Za-z0-9_.[\]-]*$/u.test(value)
+  );
+}
+
+function isPublicValidationIssue(value: unknown): value is PublicValidationIssueV1 {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, ['field', 'code', 'message']) &&
+    isBoundedErrorField(value['field']) &&
+    typeof value['code'] === 'string' &&
+    PUBLIC_VALIDATION_CODES_V1.includes(value['code'] as PublicValidationCodeV1) &&
+    isBoundedText(value['message'], 2_000)
+  );
+}
+
+function decodePublicError(value: unknown): PublicApiErrorV1 | undefined {
+  if (!isRecord(value) || !hasExactKeys(value, ['error']) || !isRecord(value['error'])) {
+    return undefined;
+  }
+  const rawError = value['error'];
+  const hasDetails = Object.hasOwn(rawError, 'details');
   if (
-    typeof body === 'object' &&
-    body !== null &&
-    'error' in body &&
-    typeof body.error === 'object' &&
-    body.error !== null &&
-    'code' in body.error &&
-    'message' in body.error &&
-    typeof body.error.code === 'string' &&
-    typeof body.error.message === 'string' &&
-    PUBLIC_ERROR_CODES_V1.includes(body.error.code as PublicApiErrorCodeV1)
+    (hasDetails
+      ? !hasExactKeys(rawError, ['code', 'message', 'details'])
+      : !hasExactKeys(rawError, ['code', 'message'])) ||
+    typeof rawError['code'] !== 'string' ||
+    !PUBLIC_ERROR_CODES_V1.includes(rawError['code'] as PublicApiErrorCodeV1) ||
+    !isBoundedText(rawError['message'], 2_000)
   ) {
-    const rawError = body.error as {
-      readonly code: string;
-      readonly message: string;
-      readonly details?: unknown;
+    return undefined;
+  }
+  if (!hasDetails) {
+    return {
+      code: rawError['code'] as PublicApiErrorCodeV1,
+      message: rawError['message'],
     };
-    const publicError: PublicApiErrorV1 =
-      rawError.details === undefined
-        ? {
-            code: rawError.code as PublicApiErrorV1['code'],
-            message: rawError.message,
-          }
-        : {
-            code: rawError.code as PublicApiErrorV1['code'],
-            message: rawError.message,
-            details: rawError.details as NonNullable<PublicApiErrorV1['details']>,
-          };
+  }
+  if (
+    !Array.isArray(rawError['details']) ||
+    !rawError['details'].every((detail) => isPublicValidationIssue(detail))
+  ) {
+    return undefined;
+  }
+  return {
+    code: rawError['code'] as PublicApiErrorCodeV1,
+    message: rawError['message'],
+    details: rawError['details'],
+  };
+}
+
+function decodeError(status: number, body: unknown): BookingEngineApiErrorV1 {
+  const publicError = decodeV1Payload(body, decodePublicError);
+  if (publicError !== undefined) {
     return new BookingEngineApiErrorV1(status, publicError);
   }
   return new BookingEngineApiErrorV1(status, {
@@ -407,7 +645,17 @@ export function createBookingEngineClientV1(
       if (!result.ok) {
         throw new PublicContractValidationErrorV1(result.errors);
       }
-      const keyResult = validatePublicIdempotencyKeyV1(options.idempotencyKey);
+      const idempotencyKeyValue = options?.idempotencyKey;
+      if (idempotencyKeyValue === undefined) {
+        throw new PublicContractValidationErrorV1([
+          {
+            field: 'idempotencyKey',
+            code: 'missing_field',
+            message: 'idempotencyKey is required for request-to-book.',
+          },
+        ]);
+      }
+      const keyResult = validatePublicIdempotencyKeyV1(idempotencyKeyValue);
       if (!keyResult.ok) {
         throw new PublicContractValidationErrorV1(keyResult.errors);
       }

@@ -13,3 +13,12 @@ artifacts
 .hermes-hardening-*
 *.log
 *.tsbuildinfo
+*.dump
+*.dump.gz
+*.sql.gz
+*.backup
+*.bak
+backups
+backup
+**/backups
+**/backup

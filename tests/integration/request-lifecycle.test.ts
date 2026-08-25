@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import { Pool } from 'pg';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -8,12 +8,12 @@ import type {
   QuoteBreakdown,
 } from '../../packages/booking-core/src/index.js';
 import {
-  createOrganizationRepository,
+  createPostgresOrganizationRepository,
   createPostgresBookingOutboxRepository,
   createPostgresBookingRequestRepository,
   createPostgresDatabase,
   createPostgresPropertyRepository,
-  createRateRepository,
+  createPostgresRateRepository,
   runMigrations,
   type BookingOutboxDeliveryEvent,
   type BookingRequestCreateInput,
@@ -24,7 +24,7 @@ import {
 
 const connectionString =
   process.env['DATABASE_URL'] ??
-  'postgresql://booking_engine_local:local-only-placeholder@127.0.0.1:5432/booking_engine_local';
+  'postgresql://booking_engine_local:local-only-placeholder@127.0.0.1:15432/booking_engine_local';
 const runId = randomUUID().replaceAll('-', '').slice(0, 12);
 const integrationSchema = `request_lifecycle_test_${runId}`;
 const table = (name: string): string => `"${integrationSchema}"."${name}"`;
@@ -72,9 +72,9 @@ describe('PostgreSQL request-to-book lifecycle', () => {
     otherOrganizationId = `org-b-${testId}`;
     propertyId = `property-${testId}`;
     clockNow = now;
-    const organizations = createOrganizationRepository(database as PostgresDatabasePort);
+    const organizations = createPostgresOrganizationRepository(database as PostgresDatabasePort);
     const properties = createPostgresPropertyRepository(database as PostgresDatabasePort);
-    const rates = createRateRepository(database as PostgresDatabasePort);
+    const rates = createPostgresRateRepository(database as PostgresDatabasePort);
     await organizations.create({ id: organizationId, name: 'Lifecycle Tenant A' });
     await organizations.create({ id: otherOrganizationId, name: 'Lifecycle Tenant B' });
     await properties.create({ organizationId }, makeProperty(propertyId));
@@ -383,6 +383,114 @@ describe('PostgreSQL request-to-book lifecycle', () => {
       ),
     ).rejects.toMatchObject({ code: 'idempotency_key_reuse' });
   });
+  it('classifies a request row with mismatched quote dates as database corruption', async () => {
+    const saved = await repository.submit(
+      { organizationId },
+      propertyId,
+      input(`corrupt-dates-${runId}`),
+      { idempotencyKey: `corrupt-dates-key-${runId}` },
+    );
+    await pool?.query(
+      `UPDATE ${table('booking_requests')} SET arrival = $2::date WHERE request_id = $1`,
+      [saved.id, '2026-08-11'],
+    );
+
+    await expect(repository.find({ organizationId }, propertyId, saved.id)).rejects.toMatchObject({
+      code: 'database_corruption',
+    });
+  });
+
+  it('repairs a phantom legacy hold, upgrades equal retries, rejects changed data, and approves occupancy', async () => {
+    const legacyRequestId = `legacy-${runId}`;
+    const legacyKey = `legacy-key-${runId}`;
+    const legacyFingerprint = createHash('md5').update(legacyRequestId).digest('hex');
+    await pool?.query(
+      `
+        INSERT INTO ${table('booking_requests')} (
+          organization_id, property_id, request_id, arrival, departure,
+          guest_count, guest_name, guest_email, message, status, quote_json,
+          idempotency_key, request_fingerprint, fingerprint_version,
+          hold_record_id, hold_expires_at, created_at, updated_at
+        )
+        VALUES (
+          $1, $2, $3, $4::date, $5::date, $6, $7, $8, $9, 'pending', $10::jsonb,
+          $11, $12, 'legacy-md5-request-id', $13, $14, $15, $15
+        )
+      `,
+      [
+        organizationId,
+        propertyId,
+        legacyRequestId,
+        rateQuote.arrival,
+        rateQuote.departure,
+        2,
+        'Ada Lovelace',
+        'ada@example.test',
+        'A quiet stay, please.',
+        JSON.stringify(rateQuote),
+        legacyKey,
+        legacyFingerprint,
+        `phantom-hold-${runId}`,
+        '2026-08-01T00:15:00.000Z',
+        now,
+      ],
+    );
+    await pool?.query(
+      `
+        UPDATE ${table('booking_requests')} AS request
+        SET hold_record_id = NULL, hold_expires_at = NULL
+        WHERE request.status = 'pending'
+          AND request.request_id = $1
+          AND request.hold_record_id IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1
+            FROM ${table('availability_blocks')} AS hold
+            WHERE hold.organization_id = request.organization_id
+              AND hold.property_id = request.property_id
+              AND hold.record_id = request.hold_record_id
+              AND hold.block_kind = 'hold'
+              AND hold.status = 'active'
+          )
+      `,
+      [legacyRequestId],
+    );
+
+    const retried = await repository.submit(
+      { organizationId },
+      propertyId,
+      input(`legacy-retry-${runId}`),
+      { idempotencyKey: legacyKey, deferInventory: true },
+    );
+    expect(retried).toMatchObject({
+      id: legacyRequestId,
+      status: 'pending',
+      fingerprintVersion: 'sha256-v1',
+    });
+    expect(retried.holdRecordId).toBeUndefined();
+    await expect(
+      repository.submit(
+        { organizationId },
+        propertyId,
+        input(`legacy-changed-${runId}`, { guestCount: 1 }),
+        { idempotencyKey: legacyKey, deferInventory: true },
+      ),
+    ).rejects.toMatchObject({ code: 'idempotency_key_reuse' });
+
+    await expect(
+      repository.approve({ organizationId }, propertyId, legacyRequestId),
+    ).resolves.toMatchObject({
+      status: 'approved',
+    });
+    const occupancy = await pool?.query<{ count: string }>(
+      `
+        SELECT count(*)::text AS count
+        FROM ${table('availability_blocks')}
+        WHERE record_id = $1 AND block_kind = 'occupancy' AND status = 'active'
+      `,
+      [legacyRequestId],
+    );
+    expect(occupancy?.rows[0]?.count).toBe('1');
+  });
 
   it('rejects malformed direct submissions with a bounded persistence error', async () => {
     await expect(
@@ -399,7 +507,7 @@ describe('PostgreSQL request-to-book lifecycle', () => {
         { organizationId },
         propertyId,
         input(`malformed-options-${runId}`),
-        null as unknown as string,
+        null as unknown as { readonly idempotencyKey: string },
       ),
     ).rejects.toMatchObject({ code: 'booking_request_validation' });
 

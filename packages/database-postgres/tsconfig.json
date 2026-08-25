@@ -8,8 +8,7 @@
   "references": [
     { "path": "../booking-core" },
     { "path": "../payments" },
-    { "path": "../channel-ical" },
-    { "path": "../sdk-typescript" }
+    { "path": "../channel-ical" }
   ],
   "include": ["src/**/*.ts"]
 }

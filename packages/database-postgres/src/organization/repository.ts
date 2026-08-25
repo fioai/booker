@@ -1,8 +1,8 @@
 import type { QueryResultRow } from 'pg';
 
-import { PersistenceError, isPostgresError } from './persistence-errors.js';
-import type { PostgresDatabasePort } from './postgres-database.js';
-import { qualifiedTable } from './sql-identifiers.js';
+import { PersistenceError, isPostgresError } from '../database/errors.js';
+import type { PostgresDatabasePort } from '../database/postgres.js';
+import { qualifiedTable } from '../database/identifiers.js';
 
 const IDENTIFIER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]*$/u;
 const MAX_IDENTIFIER_LENGTH = 64;
@@ -131,7 +131,7 @@ export class PostgresOrganizationRepository implements OrganizationRepository {
   }
 }
 
-export function createOrganizationRepository(
+export function createPostgresOrganizationRepository(
   database: PostgresDatabasePort,
 ): OrganizationRepository {
   return new PostgresOrganizationRepository(database);

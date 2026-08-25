@@ -691,5 +691,3 @@ export async function fetchICalFeed(
 ): Promise<ICalFetchedFeed> {
   return createICalFetcher(options).fetch(url);
 }
-
-export const createICalFetch = createICalFetcher;

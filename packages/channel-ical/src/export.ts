@@ -212,6 +212,3 @@ export function exportICalCalendar(input: ICalExportInput): string {
   lines.push('END:VCALENDAR');
   return `${lines.flatMap(foldLine).join('\r\n')}\r\n`;
 }
-
-export const serializeICalCalendar = exportICalCalendar;
-export const exportICal = exportICalCalendar;

@@ -5,11 +5,11 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 
 import type { PropertyConfigurationInput } from '../../packages/booking-core/src/index.js';
 import {
-  createAvailabilityRepository,
-  createOrganizationRepository,
+  createPostgresAvailabilityRepository,
+  createPostgresOrganizationRepository,
   createPostgresDatabase,
   createPostgresPropertyRepository,
-  createRateRepository,
+  createPostgresRateRepository,
   runMigrations,
   type AvailabilityRepository,
   type OrganizationRepository,
@@ -20,7 +20,7 @@ import {
 
 const connectionString =
   process.env['DATABASE_URL'] ??
-  'postgresql://booking_engine_local:local-only-placeholder@127.0.0.1:5432/booking_engine_local';
+  'postgresql://booking_engine_local:local-only-placeholder@127.0.0.1:15432/booking_engine_local';
 const runId = randomUUID().replaceAll('-', '').slice(0, 12);
 const integrationSchema = `availability_test_${runId}`;
 const table = (name: string): string => `"${integrationSchema}"."${name}"`;
@@ -63,10 +63,10 @@ describe('PostgreSQL availability, rates, and atomic occupancy', () => {
     await pool.query('SELECT 1');
     database = createPostgresDatabase({ connectionString, schema: integrationSchema });
     await runMigrations(database);
-    organizations = createOrganizationRepository(database);
+    organizations = createPostgresOrganizationRepository(database);
     properties = createPostgresPropertyRepository(database);
-    availability = createAvailabilityRepository(database);
-    rates = createRateRepository(database);
+    availability = createPostgresAvailabilityRepository(database);
+    rates = createPostgresRateRepository(database);
   });
 
   beforeEach(async () => {
@@ -120,6 +120,69 @@ describe('PostgreSQL availability, rates, and atomic occupancy', () => {
     ).rejects.toMatchObject({ code: 'rate_validation' });
   });
 
+  it('returns complete old or new rate snapshots during concurrent saves and quotes', async () => {
+    const scope = { organizationId: organizationAId };
+    const planA = {
+      currency: 'EUR',
+      baseNightlyRateMinor: 10_000,
+      cleaningFeeMinor: 1_000,
+      minimumStayNights: 2,
+      seasonalOverrides: [
+        { arrival: '2026-08-01', departure: '2026-08-03', nightlyRateMinor: 15_000 },
+      ],
+    };
+    const planB = {
+      currency: 'EUR',
+      baseNightlyRateMinor: 22_000,
+      cleaningFeeMinor: 4_000,
+      minimumStayNights: 1,
+      seasonalOverrides: [
+        { arrival: '2026-08-01', departure: '2026-08-03', nightlyRateMinor: 31_000 },
+      ],
+    };
+    await rates.saveRatePlan(scope, propertyId, planA);
+
+    const writes = Promise.all([
+      rates.saveRatePlan(scope, propertyId, planA),
+      rates.saveRatePlan(scope, propertyId, planB),
+    ]);
+    const reads = Promise.all(
+      Array.from({ length: 20 }, () => rates.getRatePlan(scope, propertyId)),
+    );
+    const quotes = Promise.all(
+      Array.from({ length: 20 }, () =>
+        rates.quote(scope, propertyId, { arrival: '2026-08-01', departure: '2026-08-03' }),
+      ),
+    );
+    await writes;
+    const [readPlans, quoteResults] = await Promise.all([reads, quotes]);
+
+    for (const plan of readPlans) {
+      expect(plan).not.toBeNull();
+      const completeA =
+        plan?.baseNightlyRateMinor === 10_000 &&
+        plan.cleaningFeeMinor === 1_000 &&
+        plan.minimumStayNights === 2 &&
+        plan.seasonalOverrides.length === 1 &&
+        plan.seasonalOverrides[0]?.nightlyRateMinor === 15_000;
+      const completeB =
+        plan?.baseNightlyRateMinor === 22_000 &&
+        plan.cleaningFeeMinor === 4_000 &&
+        plan.minimumStayNights === 1 &&
+        plan.seasonalOverrides.length === 1 &&
+        plan.seasonalOverrides[0]?.nightlyRateMinor === 31_000;
+      expect(completeA || completeB).toBe(true);
+    }
+    for (const quote of quoteResults) {
+      expect([31_000, 66_000]).toContain(quote.totalMinor);
+      expect(
+        quote.totalMinor === 31_000
+          ? quote.nightlySubtotalMinor === 30_000 && quote.cleaningFeeMinor === 1_000
+          : quote.nightlySubtotalMinor === 62_000 && quote.cleaningFeeMinor === 4_000,
+      ).toBe(true);
+    }
+  });
+
   it('treats blocks and active holds as bounded half-open availability', async () => {
     const scope = { organizationId: organizationAId };
     await availability.createManualBlock(scope, propertyId, {
@@ -153,6 +216,7 @@ describe('PostgreSQL availability, rates, and atomic occupancy', () => {
     await availability.releaseManualBlock(scope, propertyId, `manual-${runId}`);
     const hold = await availability.createHold(scope, propertyId, {
       id: `hold-${runId}`,
+
       arrival: '2026-08-02',
       departure: '2026-08-04',
       expiresAt: '2026-08-10T00:00:00.000Z',
@@ -233,6 +297,23 @@ describe('PostgreSQL availability, rates, and atomic occupancy', () => {
     expect(result?.rows[0]?.definition).toContain('stay WITH &&');
     expect(result?.rows[0]?.definition).toMatch(/status = 'active'/u);
     expect(result?.rows[0]?.definition).not.toMatch(/current_timestamp|now\s*\(/iu);
+  });
+  it('rejects control and bidi formatting characters in manual block reasons', async () => {
+    const scope = { organizationId: organizationAId };
+    for (const [index, reason] of [
+      'Owner\u0000 block',
+      'Owner\u202e block',
+      'Owner\u2066 block',
+    ].entries()) {
+      await expect(
+        availability.createManualBlock(scope, propertyId, {
+          id: `invalid-reason-${runId}-${index}`,
+          arrival: '2026-09-01',
+          departure: '2026-09-03',
+          reason,
+        }),
+      ).rejects.toMatchObject({ code: 'invalid_availability_id' });
+    }
   });
 
   it('allows exactly one of two concurrent overlapping holds in each of 100 races', async () => {

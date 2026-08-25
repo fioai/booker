@@ -5,21 +5,25 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 
 import type { PropertyConfigurationInput } from '../../packages/booking-core/src/index.js';
 import {
-  createOrganizationRepository,
+  createPostgresAvailabilityRepository,
+  createPostgresOrganizationRepository,
   createPostgresDatabase,
   createPostgresPropertyRepository,
   runMigrations,
+  type AvailabilityRepository,
   type OrganizationRepository,
   type PostgresDatabasePort,
   type PropertyRepository,
+  MigrationDriftError,
 } from '../../packages/database-postgres/src/index.js';
 
 const connectionString =
   process.env['DATABASE_URL'] ??
-  'postgresql://booking_engine_local:local-only-placeholder@127.0.0.1:5432/booking_engine_local';
+  'postgresql://booking_engine_local:local-only-placeholder@127.0.0.1:15432/booking_engine_local';
 const runId = randomUUID().replaceAll('-', '').slice(0, 12);
 const integrationSchema = `property_test_${runId}`;
 const migrationSchema = `migration_test_${runId}`;
+const migrationDriftSchema = `migration_drift_test_${runId}`;
 
 const table = (schema: string, name: string): string => `"${schema}"."${name}"`;
 
@@ -50,6 +54,7 @@ describe('PostgreSQL tenant-safe property persistence', () => {
   let database: PostgresDatabasePort | undefined;
   let organizations: OrganizationRepository;
   let properties: PropertyRepository;
+  let availability: AvailabilityRepository;
   let organizationAId: string;
   let organizationBId: string;
 
@@ -59,8 +64,9 @@ describe('PostgreSQL tenant-safe property persistence', () => {
 
     database = createPostgresDatabase({ connectionString, schema: integrationSchema });
     await runMigrations(database);
-    organizations = createOrganizationRepository(database);
+    organizations = createPostgresOrganizationRepository(database);
     properties = createPostgresPropertyRepository(database);
+    availability = createPostgresAvailabilityRepository(database);
   });
 
   beforeEach(async () => {
@@ -214,8 +220,35 @@ describe('PostgreSQL tenant-safe property persistence', () => {
     expect(await properties.findById(tenantA, tenantAProperty.id)).toBeNull();
     expect(await properties.findById(tenantB, sharedProperty.id)).not.toBeNull();
   });
+  it('serializes property mutation with a concurrent availability decision', async () => {
+    const property = makeProperty(`mutation-race-${runId}`);
+    const scope = { organizationId: organizationAId };
+    await properties.create(scope, property);
 
-  it('returns a public projection without operational notes', async () => {
+    const [updated, hold] = await Promise.all([
+      properties.update(scope, property.id, {
+        ...property,
+        name: 'Mutation Race Updated',
+      }),
+      availability.createHold(scope, property.id, {
+        id: `mutation-race-hold-${runId}`,
+        arrival: '2026-11-01',
+        departure: '2026-11-03',
+        expiresAt: '2026-11-10T00:00:00.000Z',
+      }),
+    ]);
+
+    expect(updated).toMatchObject({ id: property.id, name: 'Mutation Race Updated' });
+    expect(hold).toMatchObject({
+      id: `mutation-race-hold-${runId}`,
+      status: 'held',
+      arrival: '2026-11-01',
+      departure: '2026-11-03',
+    });
+    await availability.releaseHold(scope, property.id, hold.id);
+  });
+
+  it('returns a canonical private projection while the SQL view omits operational notes', async () => {
     const property = makeProperty(`public-${runId}`, 'Public Organization B Bungalow');
     await properties.create({ organizationId: organizationBId }, property);
 
@@ -224,12 +257,11 @@ describe('PostgreSQL tenant-safe property persistence', () => {
       property.id,
     );
     expect(publicProperty).toMatchObject({ id: property.id, name: property.name });
-    expect('operationalNotes' in (publicProperty ?? {})).toBe(false);
-    expect(JSON.stringify(publicProperty)).not.toContain(property.operationalNotes);
+    expect(publicProperty?.operationalNotes).toBe('public projection validation sentinel');
 
     const publicProperties = await properties.listPublic({ organizationId: organizationBId });
     expect(publicProperties).toHaveLength(1);
-    expect('operationalNotes' in (publicProperties[0] ?? {})).toBe(false);
+    expect(publicProperties[0]?.operationalNotes).toBe('public projection validation sentinel');
 
     const columns = await pool?.query<{ column_name: string }>(
       `
@@ -254,7 +286,7 @@ describe('PostgreSQL tenant-safe property persistence', () => {
       const result = await pool?.query<{ count: string }>(
         `SELECT count(*)::text AS count FROM ${table(migrationSchema, 'schema_migrations')}`,
       );
-      expect(result?.rows[0]?.count).toBe('9');
+      expect(result?.rows[0]?.count).toBe('10');
       await expect(
         pool?.query(`SELECT 1 FROM ${table(migrationSchema, 'organizations')} LIMIT 1`),
       ).resolves.toBeDefined();
@@ -262,6 +294,34 @@ describe('PostgreSQL tenant-safe property persistence', () => {
       await first.close();
       await second.close();
       await pool?.query(`DROP SCHEMA IF EXISTS "${migrationSchema}" CASCADE`);
+    }
+  });
+  it('fails closed when an applied migration checksum is tampered', async () => {
+    const first = createPostgresDatabase({
+      connectionString,
+      schema: migrationDriftSchema,
+    });
+    try {
+      await runMigrations(first);
+      const original = await pool?.query<{ checksum: string }>(
+        `SELECT checksum FROM ${table(migrationDriftSchema, 'schema_migrations')} WHERE id = $1`,
+        ['001_organizations_properties.sql'],
+      );
+      const originalChecksum = original?.rows[0]?.checksum;
+      expect(originalChecksum).toMatch(/^[a-f0-9]{64}$/u);
+      await pool?.query(
+        `UPDATE ${table(migrationDriftSchema, 'schema_migrations')} SET checksum = $2 WHERE id = $1`,
+        ['001_organizations_properties.sql', '0'.repeat(64)],
+      );
+      await expect(runMigrations(first)).rejects.toBeInstanceOf(MigrationDriftError);
+      await pool?.query(
+        `UPDATE ${table(migrationDriftSchema, 'schema_migrations')} SET checksum = $2 WHERE id = $1`,
+        ['001_organizations_properties.sql', originalChecksum],
+      );
+      await expect(runMigrations(first)).resolves.toBeUndefined();
+    } finally {
+      await first.close();
+      await pool?.query(`DROP SCHEMA IF EXISTS "${migrationDriftSchema}" CASCADE`);
     }
   });
 });

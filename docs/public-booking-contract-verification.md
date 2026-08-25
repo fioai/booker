@@ -1,3 +1,5 @@
+> **Archived verification record:** Historical evidence only. Current gates are the root scripts and CI workflow; this dated record is not a release checklist.
+
 # Public booking contract verification
 
 Date: 2026-07-12

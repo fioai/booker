@@ -8,10 +8,7 @@ import {
 import type { BookingRequestRecord } from '@booking-engine/database-postgres';
 import type { PublicRequestToBookInputV1 } from '@booking-engine/sdk-typescript';
 
-import {
-  createPublicBookingHttpServer,
-  type PublicBookingRequestRepository,
-} from '../../../src/index.js';
+import { createApiHttpServer, type PublicBookingRequestRepository } from '../../../src/index.js';
 import { sampleBungalowFixture } from '../../../../../packages/booking-core/test/property/fixtures.js';
 
 const scope = { organizationId: 'org-http-test' };
@@ -61,6 +58,7 @@ function requestRecordForHttp(): BookingRequestRecord {
     status: 'pending',
     quote,
     createdAt: '2026-07-12T12:00:00.000Z',
+    fingerprintVersion: 'sha256-v1',
   };
 }
 
@@ -74,6 +72,7 @@ function dependencies() {
         propertyId: requestedPropertyId,
         status: 'pending',
         createdAt: '2026-07-12T12:00:00.000Z',
+        fingerprintVersion: 'sha256-v1',
       }),
     ),
   };
@@ -91,7 +90,7 @@ async function json(response: Response): Promise<unknown> {
 }
 
 describe('public booking v1 real HTTP server', () => {
-  let server: ReturnType<typeof createPublicBookingHttpServer> | undefined;
+  let server: ReturnType<typeof createApiHttpServer> | undefined;
   let baseUrl: string | undefined;
 
   afterEach(async () => {
@@ -101,7 +100,7 @@ describe('public booking v1 real HTTP server', () => {
   });
 
   it('serves OpenAPI and every v1 route through a bound ephemeral server', async () => {
-    server = createPublicBookingHttpServer(dependencies(), { scope });
+    server = createApiHttpServer(dependencies(), { scope });
     const address = await server.listen(0);
     baseUrl = `http://127.0.0.1:${address.port}`;
 
@@ -158,7 +157,7 @@ describe('public booking v1 real HTTP server', () => {
   });
 
   it('serves a bounded health probe without entering a tenant-scoped public route', async () => {
-    server = createPublicBookingHttpServer(dependencies(), { scope });
+    server = createApiHttpServer(dependencies(), { scope });
     const address = await server.listen(0);
     baseUrl = `http://127.0.0.1:${address.port}`;
 
@@ -169,7 +168,7 @@ describe('public booking v1 real HTTP server', () => {
   });
 
   it('keeps invalid, method, not-found, and private-data behavior on the real transport', async () => {
-    server = createPublicBookingHttpServer(dependencies(), { scope });
+    server = createApiHttpServer(dependencies(), { scope });
     const address = await server.listen(0);
     baseUrl = `http://127.0.0.1:${address.port}`;
 
@@ -204,7 +203,7 @@ describe('public booking v1 real HTTP server', () => {
     const deps = dependencies();
     const submit = vi.fn(async () => requestRecordForHttp());
     deps.bookingRequests = { submit };
-    server = createPublicBookingHttpServer(deps, { scope });
+    server = createApiHttpServer(deps, { scope });
     const address = await server.listen(0);
     baseUrl = `http://127.0.0.1:${address.port}`;
 

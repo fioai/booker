@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 
 import {
-  createOwnerCredentialRepository,
+  createPostgresOwnerCredentialRepository,
   type PostgresDatabasePort,
 } from '@booking-engine/database-postgres';
 
@@ -81,7 +81,9 @@ function qualifiedTable(database: PostgresDatabasePort, table: string): string {
 export function createPostgresAdminCredentialStore(
   database: PostgresDatabasePort,
 ): PostgresAdminCredentialStore {
-  return createOwnerCredentialRepository(database) as unknown as PostgresAdminCredentialStore;
+  return createPostgresOwnerCredentialRepository(
+    database,
+  ) as unknown as PostgresAdminCredentialStore;
 }
 
 export function createPostgresAdminSessionStore(

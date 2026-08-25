@@ -637,6 +637,3 @@ export function parseICalCalendar(
     events: Object.freeze(parsedEvents),
   });
 }
-
-export const parseICal = parseICalCalendar;
-export const parseICalendar = parseICalCalendar;

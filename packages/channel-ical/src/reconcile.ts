@@ -651,5 +651,3 @@ export function createMemoryICalBlockStore(): ICalBlockStore {
 
   return memoryStore;
 }
-
-export const reconcileICalEvents = reconcileICalFeed;

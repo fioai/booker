@@ -38,35 +38,20 @@ importers:
         specifier: 3.2.4
         version: 3.2.4(@types/node@26.1.1)
 
-  apps/admin:
-    dependencies:
-      '@booking-engine/sdk-typescript':
-        specifier: workspace:*
-        version: link:../../packages/sdk-typescript
-
   apps/api:
     dependencies:
       '@booking-engine/booking-core':
         specifier: workspace:*
         version: link:../../packages/booking-core
-      '@booking-engine/channel-calendar':
-        specifier: workspace:*
-        version: link:../../packages/channel-calendar
       '@booking-engine/channel-ical':
         specifier: workspace:*
         version: link:../../packages/channel-ical
       '@booking-engine/database-postgres':
         specifier: workspace:*
         version: link:../../packages/database-postgres
-      '@booking-engine/notifications':
-        specifier: workspace:*
-        version: link:../../packages/notifications
       '@booking-engine/payments':
         specifier: workspace:*
         version: link:../../packages/payments
-      '@booking-engine/payments-stripe':
-        specifier: workspace:*
-        version: link:../../packages/payments-stripe
       '@booking-engine/sdk-typescript':
         specifier: workspace:*
         version: link:../../packages/sdk-typescript
@@ -92,9 +77,6 @@ importers:
       '@booking-engine/payments':
         specifier: workspace:*
         version: link:../payments
-      '@booking-engine/sdk-typescript':
-        specifier: workspace:*
-        version: link:../sdk-typescript
       pg:
         specifier: ^8.22.0
         version: 8.22.0
