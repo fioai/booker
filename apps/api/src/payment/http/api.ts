@@ -1,5 +1,5 @@
 import type {
-  CheckoutSession,
+  PaymentCheckoutSession,
   PaymentCheckoutService,
   PaymentOrganizationScope,
 } from '@booking-engine/payments';
@@ -148,7 +148,7 @@ function emptyBody(body: unknown): boolean {
   );
 }
 
-function checkoutResponse(session: CheckoutSession): PaymentHttpResponse {
+function checkoutResponse(session: PaymentCheckoutSession): PaymentHttpResponse {
   return {
     status: 201,
     body: {

@@ -1,6 +1,11 @@
 import { readFile } from 'node:fs/promises';
+import { createServer, request as httpRequest } from 'node:http';
 
 import { describe, expect, it, vi } from 'vitest';
+import {
+  createICalSyncJob,
+  recheckAvailabilityBeforeCommit,
+} from '../../../apps/api/src/jobs/ical/sync.js';
 
 import {
   ICalFetchError,
@@ -42,6 +47,27 @@ function event(overrides: Partial<ICalEvent> = {}): ICalEvent {
 
 function response(body: ICalTransportBody, status = 200): ICalTransportResponse {
   return { status, headers: {}, body };
+}
+
+interface TestCalendarEvent {
+  readonly uid: string;
+  readonly properties?: readonly string[];
+}
+
+function calendarFeed(events: readonly TestCalendarEvent[]): string {
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0'];
+  for (const event of events) {
+    lines.push(
+      'BEGIN:VEVENT',
+      `UID:${event.uid}`,
+      'DTSTART;VALUE=DATE:20260810',
+      'DTEND;VALUE=DATE:20260811',
+      ...(event.properties ?? []),
+      'END:VEVENT',
+    );
+  }
+  lines.push('END:VCALENDAR');
+  return lines.join('\r\n');
 }
 
 describe('defensive iCalendar parsing', () => {
@@ -202,6 +228,184 @@ describe('defensive iCalendar parsing', () => {
 
     expect(parseICalCalendar(feed).events[0]?.summary).toBe('line one\nline two');
   });
+
+  it.each([
+    { name: 'RRULE', line: 'RRULE:FREQ=DAILY' },
+    { name: 'EXRULE', line: 'EXRULE:FREQ=DAILY' },
+    { name: 'RDATE', line: 'RDATE;VALUE=DATE:20260812' },
+    { name: 'EXDATE', line: 'EXDATE;VALUE=DATE:20260812' },
+    {
+      name: 'RECURRENCE-ID',
+      line: 'RECURRENCE-ID;VALUE=DATE:20260810',
+    },
+  ])('rejects unsupported $name recurrence instead of keeping one occurrence', ({ line }) => {
+    const feed = calendarFeed([
+      {
+        uid: 'recurring@example.invalid',
+        properties: [line],
+      },
+    ]);
+
+    expect(() => parseICalCalendar(feed)).toThrowError(
+      expect.objectContaining({ code: 'unsupported_recurrence' }),
+    );
+  });
+
+  it('preserves distinct UID values exactly', () => {
+    const calendar = parseICalCalendar(
+      calendarFeed([{ uid: 'booking-1@example.invalid' }, { uid: 'booking 1@example.invalid' }]),
+    );
+
+    expect(calendar.events.map(({ uid }) => uid)).toEqual([
+      'booking-1@example.invalid',
+      'booking 1@example.invalid',
+    ]);
+  });
+
+  it('rejects UID boundary whitespace instead of trimming identity', () => {
+    for (const uid of [
+      ' padded@example.invalid',
+      'padded@example.invalid ',
+      '\u00a0padded@example.invalid',
+    ]) {
+      expect(() => parseICalCalendar(calendarFeed([{ uid }]))).toThrowError(
+        expect.objectContaining({ code: 'invalid_uid' }),
+      );
+    }
+  });
+
+  it('rejects raw and escaped control characters in UIDs', () => {
+    for (const uid of [
+      'control\u0001@example.invalid',
+      'control\u0085@example.invalid',
+      'control\\n@example.invalid',
+    ]) {
+      expect(() => parseICalCalendar(calendarFeed([{ uid }]))).toThrowError(
+        expect.objectContaining({ code: 'invalid_uid' }),
+      );
+    }
+  });
+
+  it('emits transparent events as non-blocking cancellations and keeps opaque events', () => {
+    const calendar = parseICalCalendar(
+      calendarFeed([
+        {
+          uid: 'opaque@example.invalid',
+          properties: ['TRANSP:OPAQUE'],
+        },
+        {
+          uid: 'transparent@example.invalid',
+          properties: ['TRANSP:TRANSPARENT', 'SEQUENCE:2', 'LAST-MODIFIED:20260702T120000Z'],
+        },
+      ]),
+    );
+
+    expect(calendar.events).toMatchObject([
+      {
+        uid: 'opaque@example.invalid',
+        status: 'confirmed',
+      },
+      {
+        uid: 'transparent@example.invalid',
+        status: 'cancelled',
+        sequence: 2,
+        lastModified: '2026-07-02T12:00:00.000Z',
+      },
+    ]);
+    expect(() =>
+      parseICalCalendar(
+        calendarFeed([
+          {
+            uid: 'transparent-1@example.invalid',
+            properties: ['TRANSP:TRANSPARENT'],
+          },
+          {
+            uid: 'transparent-2@example.invalid',
+            properties: ['TRANSP:TRANSPARENT'],
+          },
+        ]),
+        { maxEvents: 1 },
+      ),
+    ).toThrowError(expect.objectContaining({ code: 'event_limit' }));
+  });
+
+  it('rejects invalid and duplicate TRANSP properties', () => {
+    expect(() =>
+      parseICalCalendar(
+        calendarFeed([
+          {
+            uid: 'invalid-transparency@example.invalid',
+            properties: ['TRANSP:FREE'],
+          },
+        ]),
+      ),
+    ).toThrowError(expect.objectContaining({ code: 'invalid_transparency' }));
+
+    expect(() =>
+      parseICalCalendar(
+        calendarFeed([
+          {
+            uid: 'duplicate-transparency@example.invalid',
+            properties: ['TRANSP:OPAQUE', 'TRANSP:TRANSPARENT'],
+          },
+        ]),
+      ),
+    ).toThrowError(expect.objectContaining({ code: 'duplicate_property' }));
+  });
+
+  it('accepts the SEQUENCE bounds and rejects values outside non-negative RFC semantics', () => {
+    const calendar = parseICalCalendar(
+      calendarFeed([
+        {
+          uid: 'zero-sequence@example.invalid',
+          properties: ['SEQUENCE:0'],
+        },
+        {
+          uid: 'positive-sequence@example.invalid',
+          properties: ['SEQUENCE:+1'],
+        },
+        {
+          uid: 'leading-zero-sequence@example.invalid',
+          properties: ['SEQUENCE:00000000001'],
+        },
+        {
+          uid: 'max-sequence@example.invalid',
+          properties: ['SEQUENCE:2147483647'],
+        },
+      ]),
+    );
+
+    expect(calendar.events.map(({ sequence }) => sequence)).toEqual([0, 1, 1, 2_147_483_647]);
+    for (const sequence of ['-1', '1.5', '2147483648', '00000000002147483648', '9'.repeat(100)]) {
+      expect(() =>
+        parseICalCalendar(
+          calendarFeed([
+            {
+              uid: `sequence-${sequence}@example.invalid`,
+              properties: [`SEQUENCE:${sequence}`],
+            },
+          ]),
+        ),
+      ).toThrowError(expect.objectContaining({ code: 'invalid_sequence' }));
+    }
+  });
+
+  it('unfolds many continuations at the exact encoded line boundary', () => {
+    const continuationCount = 1_999;
+    const feed = calendarFeed([
+      {
+        uid: 'many-continuations@example.invalid',
+        properties: ['SUMMARY:a', ...Array.from({ length: continuationCount }, () => ' a')],
+      },
+    ]);
+
+    expect(parseICalCalendar(feed, { maxLineLength: 2_008 }).events[0]?.summary).toBe(
+      'a'.repeat(2_000),
+    );
+    expect(() => parseICalCalendar(feed, { maxLineLength: 2_007 })).toThrowError(
+      expect.objectContaining({ code: 'line_too_long' }),
+    );
+  });
 });
 
 describe('SSRF-safe bounded iCalendar fetching', () => {
@@ -360,6 +564,171 @@ describe('SSRF-safe bounded iCalendar fetching', () => {
     expect(String(error)).not.toContain(secret);
     expect(String(error)).not.toContain('secret');
   });
+
+  it.each([
+    { family: 'IPv4', address: '8.8.8.8' },
+    { family: 'IPv4', address: '93.184.216.34' },
+    { family: 'IPv6', address: '2001:4860:4860::8888' },
+    { family: 'IPv6', address: '2606:4700:4700::1111' },
+    { family: 'IPv6', address: '2a00:1450:4001:81b::200e' },
+  ])('allows globally routable $family address $address', async ({ address }) => {
+    const transport = vi.fn(async (): Promise<ICalTransportResponse> => response('calendar'));
+    const fetcher = createICalFetcher({
+      resolveHost: async () => [address],
+      transport,
+    });
+
+    await expect(fetcher.fetch('https://calendar.example/feed.ics')).resolves.toMatchObject({
+      body: 'calendar',
+    });
+    expect(transport).toHaveBeenCalledWith(
+      expect.any(URL),
+      expect.objectContaining({ addresses: [address] }),
+    );
+  });
+
+  it.each([
+    { family: 'IPv4', address: '0.0.0.1' },
+    { family: 'IPv4', address: '10.0.0.1' },
+    { family: 'IPv4', address: '100.64.0.1' },
+    { family: 'IPv4', address: '127.0.0.1' },
+    { family: 'IPv4', address: '169.254.1.1' },
+    { family: 'IPv4', address: '192.0.2.1' },
+    { family: 'IPv4', address: '198.18.0.1' },
+    { family: 'IPv4', address: '198.51.100.1' },
+    { family: 'IPv4', address: '203.0.113.1' },
+    { family: 'IPv4', address: '224.0.0.1' },
+    { family: 'IPv4', address: '240.0.0.1' },
+    { family: 'IPv6', address: '::1' },
+    { family: 'IPv6', address: '::ffff:192.168.1.1' },
+    { family: 'IPv6', address: '::ffff:8.8.8.8' },
+    { family: 'IPv6', address: '100::1' },
+    { family: 'IPv6', address: '2001:2::1' },
+    { family: 'IPv6', address: '2001:db8::1' },
+    { family: 'IPv6', address: '3fff::1' },
+    { family: 'IPv6', address: '5f00::1' },
+    { family: 'IPv6', address: 'fc00::1' },
+    { family: 'IPv6', address: 'fe80::1' },
+    { family: 'IPv6', address: 'fec0::1' },
+    { family: 'IPv6', address: 'ff02::1' },
+  ])('rejects non-global or special-purpose $family address $address', async ({ address }) => {
+    const transport = vi.fn(async (): Promise<ICalTransportResponse> => response('never'));
+    const fetcher = createICalFetcher({
+      resolveHost: async () => [address],
+      transport,
+    });
+
+    await expect(fetcher.fetch('https://calendar.example/feed.ics')).rejects.toMatchObject({
+      code: 'blocked_address',
+    });
+    expect(transport).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { contentLength: 'not-a-number', code: 'network_error' },
+    { contentLength: '1000001', code: 'body_limit' },
+  ])(
+    'destroys a response with invalid Content-Length $contentLength',
+    async ({ contentLength, code }) => {
+      const destroy = vi.fn();
+      const body = {
+        destroy,
+        async *[Symbol.asyncIterator](): AsyncGenerator<Uint8Array> {
+          yield new TextEncoder().encode('unread');
+        },
+      };
+      const fetcher = createICalFetcher({
+        resolveHost: async () => ['93.184.216.34'],
+        transport: async () => ({
+          status: 200,
+          headers: { 'content-length': contentLength },
+          body,
+        }),
+      });
+
+      await expect(fetcher.fetch('https://calendar.example/feed.ics')).rejects.toMatchObject({
+        code,
+      });
+      expect(destroy).toHaveBeenCalledOnce();
+    },
+  );
+
+  it('closes a server response body before returning an HTTP error', async () => {
+    let responseClosed = false;
+    let markResponseClosed: (() => void) | undefined;
+    const responseClosedPromise = new Promise<void>((resolve) => {
+      markResponseClosed = resolve;
+    });
+    const server = createServer((_request, serverResponse) => {
+      serverResponse.socket?.unref();
+      serverResponse.writeHead(503, { 'content-type': 'text/plain' });
+      serverResponse.write('partial error body');
+      serverResponse.once('close', () => {
+        responseClosed = true;
+        markResponseClosed?.();
+      });
+    });
+    await new Promise<void>((resolve, reject) => {
+      const onError = (error: Error): void => reject(error);
+      server.once('error', onError);
+      server.listen(0, '127.0.0.1', () => {
+        server.off('error', onError);
+        resolve();
+      });
+    });
+
+    try {
+      const serverAddress = server.address();
+      if (serverAddress === null || typeof serverAddress === 'string') {
+        throw new Error('test server did not bind to a TCP port.');
+      }
+      const fetcher = createICalFetcher({
+        resolveHost: async () => ['93.184.216.34'],
+        transport: (_url, { signal }) =>
+          new Promise<ICalTransportResponse>((resolve, reject) => {
+            const request = httpRequest(
+              {
+                hostname: '127.0.0.1',
+                port: serverAddress.port,
+                path: '/',
+                method: 'GET',
+              },
+              (incoming) => {
+                resolve({
+                  status: incoming.statusCode ?? 0,
+                  headers: {},
+                  body: incoming,
+                });
+              },
+            );
+            const abort = (): void => {
+              request.destroy();
+            };
+            signal.addEventListener('abort', abort, { once: true });
+            request.once('close', () => signal.removeEventListener('abort', abort));
+            request.once('error', reject);
+            request.end();
+          }),
+      });
+
+      await expect(fetcher.fetch('https://calendar.example/feed.ics')).rejects.toMatchObject({
+        code: 'http_error',
+      });
+      await responseClosedPromise;
+      expect(responseClosed).toBe(true);
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error === undefined) {
+            resolve();
+          } else {
+            reject(error);
+          }
+        });
+      });
+    }
+  });
 });
 
 describe('tenant-scoped idempotent iCalendar reconciliation', () => {
@@ -371,6 +740,38 @@ describe('tenant-scoped idempotent iCalendar reconciliation', () => {
     expect(first.decisions).toMatchObject([{ action: 'created', uid: event().uid }]);
     expect(second.decisions).toMatchObject([{ action: 'unchanged', uid: event().uid }]);
     expect(await store.list(scopeA, sourceId)).toHaveLength(1);
+  });
+
+  it('accepts the maximum direct sequence and rejects invalid sequences before store writes', async () => {
+    const acceptedStore = createMemoryICalBlockStore();
+    await expect(
+      reconcileICalFeed(scopeA, sourceId, [event({ sequence: 2_147_483_647 })], acceptedStore),
+    ).resolves.toMatchObject({
+      decisions: [{ action: 'created' }],
+    });
+    await expect(acceptedStore.list(scopeA, sourceId)).resolves.toMatchObject([
+      { sequence: 2_147_483_647 },
+    ]);
+
+    for (const [index, sequence] of [-1, 1.5, 2_147_483_648].entries()) {
+      const store = createMemoryICalBlockStore();
+      const upsert = vi.spyOn(store, 'upsert');
+      const release = vi.spyOn(store, 'release');
+
+      await expect(
+        reconcileICalFeed(
+          scopeA,
+          sourceId,
+          [
+            event({ uid: 'valid-before-invalid-sequence@example.invalid' }),
+            event({ uid: `invalid-sequence-${index}@example.invalid`, sequence }),
+          ],
+          store,
+        ),
+      ).rejects.toThrow('iCalendar event sequence is invalid.');
+      expect(upsert).not.toHaveBeenCalled();
+      expect(release).not.toHaveBeenCalled();
+    }
   });
 
   it('does not cross tenant boundaries even when source and UID are reused', async () => {
@@ -429,6 +830,54 @@ describe('tenant-scoped idempotent iCalendar reconciliation', () => {
     );
     expect(cancelled.decisions).toMatchObject([{ action: 'released' }]);
     expect((await store.list(scopeA, sourceId))[0]?.status).toBe('released');
+  });
+
+  it('ignores a first transparent event and releases a prior opaque block', async () => {
+    const uid = 'transparency-transition@example.invalid';
+    const opaqueEvents = parseICalCalendar(
+      calendarFeed([{ uid, properties: ['TRANSP:OPAQUE', 'SEQUENCE:1'] }]),
+    ).events;
+    const transparentEvents = parseICalCalendar(
+      calendarFeed([
+        {
+          uid,
+          properties: ['TRANSP:TRANSPARENT', 'SEQUENCE:2', 'LAST-MODIFIED:20260702T120000Z'],
+        },
+      ]),
+    ).events;
+    expect(transparentEvents).toMatchObject([
+      {
+        uid,
+        status: 'cancelled',
+        sequence: 2,
+        lastModified: '2026-07-02T12:00:00.000Z',
+      },
+    ]);
+
+    const store = createMemoryICalBlockStore();
+    await expect(
+      reconcileICalFeed(scopeA, sourceId, transparentEvents, store),
+    ).resolves.toMatchObject({
+      decisions: [{ action: 'ignored_cancelled', uid }],
+    });
+    expect(await store.list(scopeA, sourceId)).toEqual([]);
+
+    await expect(reconcileICalFeed(scopeA, sourceId, opaqueEvents, store)).resolves.toMatchObject({
+      decisions: [{ action: 'created', uid }],
+    });
+    await expect(
+      reconcileICalFeed(scopeA, sourceId, transparentEvents, store),
+    ).resolves.toMatchObject({
+      decisions: [{ action: 'released', uid }],
+    });
+    expect(await store.list(scopeA, sourceId)).toMatchObject([
+      {
+        uid,
+        status: 'released',
+        sequence: 2,
+        lastModified: '2026-07-02T12:00:00.000Z',
+      },
+    ]);
   });
 
   it('handles duplicate UIDs deterministically without creating two occupancy blocks', async () => {
@@ -715,11 +1164,79 @@ describe('direct reservation iCalendar export', () => {
       expect(new TextEncoder().encode(line).byteLength).toBeLessThanOrEqual(75);
     }
   });
+
+  it('requires explicit string timezones and keeps offset conversion deterministic', () => {
+    const reservation = {
+      uid: 'timestamp-zone@booking-engine.invalid',
+      summary: 'Timestamp zone',
+      arrival: '2026-10-10',
+      departure: '2026-10-11',
+    };
+
+    expect(() =>
+      exportICalCalendar({
+        reservations: [
+          {
+            ...reservation,
+            updatedAt: '2026-07-12T12:00:00',
+          },
+        ],
+      }),
+    ).toThrow(/offset/u);
+
+    const offsetOutput = exportICalCalendar({
+      reservations: [
+        {
+          ...reservation,
+          updatedAt: '2026-07-12T14:00:00+02:00',
+        },
+      ],
+    });
+    const dateOutput = exportICalCalendar({
+      reservations: [
+        {
+          ...reservation,
+          updatedAt: new Date('2026-07-12T12:00:00Z'),
+        },
+      ],
+    });
+
+    expect(offsetOutput).toContain('DTSTAMP:20260712T120000Z\r\n');
+    expect(offsetOutput).toContain('LAST-MODIFIED:20260712T120000Z\r\n');
+    expect(dateOutput).toContain('DTSTAMP:20260712T120000Z\r\n');
+  });
+
+  it('rejects impossible timestamp fields and accepts a real leap day with an offset', () => {
+    const reservation = {
+      uid: 'timestamp-validation@booking-engine.invalid',
+      summary: 'Timestamp validation',
+      arrival: '2026-10-10',
+      departure: '2026-10-11',
+    };
+    const exportAt = (updatedAt: string | Date) =>
+      exportICalCalendar({
+        reservations: [{ ...reservation, updatedAt }],
+      });
+
+    expect(exportAt('2024-02-29T23:30:00+0130')).toContain('DTSTAMP:20240229T220000Z\r\n');
+    for (const updatedAt of [
+      '2026-02-29T12:00:00Z',
+      '2024-02-30T12:00:00Z',
+      '2026-13-01T12:00:00Z',
+      '2026-01-01T24:00:00Z',
+      '2026-01-01T12:60:00Z',
+      '2026-01-01T12:00:60Z',
+      '2026-01-01T12:00:00+24:00',
+      '2026-01-01T12:00:00+02:60',
+      '2026-01-01T12:00:00+2:00',
+    ]) {
+      expect(() => exportAt(updatedAt)).toThrow(/valid timestamp/u);
+    }
+  });
 });
 
 describe('sync health and immediate approval/payment availability recheck', () => {
   it('records the success timestamp when reconciliation completes', async () => {
-    const { createICalSyncJob } = await import('../../../apps/api/src/jobs/ical/sync.js');
     let now = '2026-07-12T12:00:00.000Z';
     const clock = { now: () => new Date(now) };
     const job = createICalSyncJob({
@@ -744,7 +1261,6 @@ describe('sync health and immediate approval/payment availability recheck', () =
   });
 
   it('records last attempt, last success, stale, and safe error state through the real job', async () => {
-    const { createICalSyncJob } = await import('../../../apps/api/src/jobs/ical/sync.js');
     const clock = createFixedClock('2026-07-12T12:00:00.000Z');
     const store = createMemoryICalBlockStore();
     const fetchFeed = vi
@@ -785,10 +1301,42 @@ describe('sync health and immediate approval/payment availability recheck', () =
     expect(JSON.stringify(health)).not.toContain('calendar.example');
   });
 
+  it.each([
+    {
+      code: 'unsupported_recurrence',
+      message: 'The calendar source contained unsupported recurrence data.',
+      properties: ['RRULE:FREQ=DAILY'],
+    },
+    {
+      code: 'invalid_transparency',
+      message: 'The calendar source returned unsupported event transparency.',
+      properties: ['TRANSP:FREE'],
+    },
+  ])('preserves the safe $code sync error', async ({ code, message, properties }) => {
+    const job = createICalSyncJob({
+      store: createMemoryICalBlockStore(),
+      fetchFeed: async () =>
+        calendarFeed([
+          {
+            uid: `${code}@example.invalid`,
+            properties,
+          },
+        ]),
+    });
+
+    const result = await job.run({
+      scope: scopeA,
+      sourceId,
+      url: 'https://calendar.example/private-feed?token=secret',
+    });
+
+    expect(result.status).toBe('failed');
+    expect(result.health.error).toEqual({ code, message });
+    expect(JSON.stringify(result)).not.toContain('secret');
+    expect(JSON.stringify(result)).not.toContain('calendar.example');
+  });
+
   it('rechecks the tenant-scoped stay immediately before approval or payment', async () => {
-    const { recheckAvailabilityBeforeCommit } = await import(
-      '../../../apps/api/src/jobs/ical/sync.js'
-    );
     const isAvailable = vi.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(false);
     const dependencies = { isAvailable };
     const stay = { arrival: '2026-10-10', departure: '2026-10-13' };
@@ -826,5 +1374,28 @@ describe('iCalendar channel provenance', () => {
         status: 'cancelled',
       },
     ]);
+  });
+
+  it('rejects EXRULE that excludes DTSTART instead of emitting an active block', async () => {
+    const feed = calendarFeed([
+      {
+        uid: 'excluded-by-exrule@example.invalid',
+        properties: ['EXRULE:FREQ=DAILY;COUNT=1'],
+      },
+    ]);
+    const channel = createICalChannel({
+      sourceId,
+      url: 'https://calendar.example/feed.ics',
+      fetcher: {
+        fetch: vi.fn(async () => ({
+          body: feed,
+          finalUrl: 'https://calendar.example/feed.ics',
+        })),
+      },
+    });
+
+    await expect(channel.importBlocks()).rejects.toMatchObject({
+      code: 'unsupported_recurrence',
+    });
   });
 });

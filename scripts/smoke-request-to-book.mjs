@@ -1,6 +1,6 @@
 /* global process, fetch, URL */
 
-const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', 'app']);
+const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]', 'app']);
 
 function help() {
   process.stdout.write(
@@ -10,6 +10,9 @@ function help() {
       'Required environment:',
       '  SMOKE_BASE_URL, SMOKE_ADMIN_EMAIL, SMOKE_ADMIN_PASSWORD, SMOKE_PROPERTY_ID,',
       '  SMOKE_ARRIVAL, SMOKE_DEPARTURE, SMOKE_IDEMPOTENCY_KEY.',
+      '',
+      'Optional environment:',
+      '  SMOKE_ADMIN_ORIGIN when the browser-facing origin differs from the request URL.',
       '',
       'The exercise is intentionally limited to local hosts and performs public property,',
       'availability, quote, request-to-book, admin login, recheck, approve, and read-back calls.',
@@ -25,21 +28,37 @@ function required(name) {
   return value;
 }
 
-function localBaseUrl() {
-  const raw = required('SMOKE_BASE_URL');
+function localHttpUrl(name, raw) {
   let url;
   try {
     url = new URL(raw);
   } catch {
-    throw new Error('SMOKE_BASE_URL must be a valid HTTP URL.');
+    throw new Error(name + ' must be a valid HTTP URL.');
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    throw new Error('SMOKE_BASE_URL must use HTTP(S).');
+    throw new Error(name + ' must use HTTP(S).');
   }
+  // URL.hostname keeps brackets around IPv6 hosts.
   if (!LOCAL_HOSTS.has(url.hostname.toLowerCase())) {
-    throw new Error('SMOKE_BASE_URL is restricted to a local clean-room host.');
+    throw new Error(name + ' is restricted to a local clean-room host.');
   }
-  return url.toString().replace(/\/$/u, '');
+  return url;
+}
+
+function localBaseUrl() {
+  return localHttpUrl('SMOKE_BASE_URL', required('SMOKE_BASE_URL')).toString().replace(/\/$/u, '');
+}
+
+function localAdminOrigin(baseUrl) {
+  const raw = process.env.SMOKE_ADMIN_ORIGIN?.trim();
+  if (raw === undefined || raw.length === 0) {
+    return new URL(baseUrl).origin;
+  }
+  const url = localHttpUrl('SMOKE_ADMIN_ORIGIN', raw);
+  if (url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
+    throw new Error('SMOKE_ADMIN_ORIGIN must be an exact HTTP(S) origin.');
+  }
+  return url.origin;
 }
 
 function record(value, name) {
@@ -118,6 +137,7 @@ async function main() {
     return;
   }
   const baseUrl = localBaseUrl();
+  const adminOrigin = localAdminOrigin(baseUrl);
   const propertyId = required('SMOKE_PROPERTY_ID');
   const arrival = required('SMOKE_ARRIVAL');
   const departure = required('SMOKE_DEPARTURE');
@@ -210,12 +230,11 @@ async function main() {
   if (anonymousCsrf === undefined) {
     throw new Error('admin login page did not issue a CSRF cookie.');
   }
-  const origin = new URL(baseUrl).origin;
   const loginResponse = await fetch(
     baseUrl + '/admin/login',
     jsonOptions(
       { email: adminEmail, password: adminPassword },
-      { cookie: loginCookieHeader, 'x-csrf-token': anonymousCsrf, origin },
+      { cookie: loginCookieHeader, 'x-csrf-token': anonymousCsrf, origin: adminOrigin },
     ),
   );
   const loginText = await loginResponse.text();
@@ -233,7 +252,11 @@ async function main() {
   if (session === undefined || csrf === undefined) {
     throw new Error('admin login did not issue session and CSRF cookies.');
   }
-  const adminHeaders = { cookie: sessionCookieHeader, 'x-csrf-token': csrf, origin };
+  const adminHeaders = {
+    cookie: sessionCookieHeader,
+    'x-csrf-token': csrf,
+    origin: adminOrigin,
+  };
   const routePrefix =
     '/admin/properties/' +
     encodeURIComponent(propertyId) +

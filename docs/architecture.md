@@ -28,16 +28,42 @@ Composite TypeScript references mirror runtime workspace dependencies and are ch
 
 - **`booking-core`** owns property configuration brands and invariants, half-open local-date
   intervals, minor-unit money, rate plans/quotes, and booking lifecycle transitions.
-- **`database-postgres`** owns tenant-scoped SQL, PostgreSQL transactions and advisory property
-  locks, migration checksums, persistence corruption classification, and canonical private
-  projections. It never imports the SDK.
+- **`database-postgres`** owns organization-scoped domain SQL, with property scope for
+  property-owned records. It also owns PostgreSQL transactions and advisory property locks,
+  migration checksums, trusted operational outbox/payment-event repositories, persistence
+  corruption classification, and canonical private projections. It never imports the SDK.
 - **`channel-ical`** owns iCalendar ports and adapter semantics. PostgreSQL implements its
   adapter but does not re-export its ports.
 - **`payments`** owns provider-neutral payment ports. Live Stripe activation is deferred.
-- **`apps/api`** owns transport, error conversion, server-rendered admin presentation, and the
-  sole outward SDK V1 mapper.
+- **`apps/api`** owns transport, persistent admin-session authentication, error conversion,
+  server-rendered admin presentation, and the sole outward SDK V1 mapper.
 - **`sdk-typescript`** owns the stable V1 wire types, OpenAPI metadata, strict response/error
   decoding, and dependency-free consumer client.
+
+## Persistence scope
+
+Tenant-owned domain repository calls include an organization ID. Calls for property-owned data
+also include a property ID.
+
+Expired-hold maintenance is the intentional tenant-wide exception to property-targeted repository
+calls. `releaseExpiredHolds` accepts organization scope, scans only properties with expired active
+holds in that organization, and acquires the organization/property advisory lock before it mutates
+holds for each property. An operations caller must not replace this with an unlocked or
+cross-organization bulk update.
+
+Trusted operational paths use some global technical keys:
+
+- outbox dispatch claims and acknowledges by `outbox_id`; its internal event retains organization
+  and property IDs, and the delivery payload remains private;
+- the persistent admin-session repository looks up `session_digest`; it stores no raw session
+  token, and use requires active organization membership, an unexpired and unrevoked session, and
+  CSRF verification for protected mutations; and
+- payment webhook deduplication uses `(provider, provider_event_id)`; trusted ingress verifies the
+  signature and provider account, then repository processing checks organization/property
+  metadata, checkout identity, amount, currency, and occupancy.
+
+These global keys are for trusted authentication, delivery, and provider-ingress code. They are
+not public or tenant-selected lookup keys, and their private data must not cross the public mapper.
 
 ## API layout
 
@@ -57,6 +83,7 @@ apps/api/src/
     contracts.ts     admin API types and error class
     routes.ts        route union/parser
     security.ts      cookies, CSRF, origin, bounded bodies, sessions, roles
+    scope.ts         tenant/property/request scoping, property lookup, and not-found/error guards
     validation.ts    property/rate/manual-block input validation
     serialization.ts response/error serializers and safe health output
     views/property-page.ts server-rendered reference property page
@@ -83,16 +110,19 @@ owner-admin scope.
 2. The required `Idempotency-Key` is separate from the JSON body.
 3. A quote is validated as an immutable snapshot; nightly dates/count and arithmetic must agree.
 4. Property availability-affecting decisions acquire the tenant/property advisory lock.
-5. Public requests persist pending without inventory. Owner approval rechecks availability and
-   inserts occupancy atomically; a repaired phantom legacy hold is treated as a public pending
-   request.
+5. Public requests persist pending without inventory. In a deployment that activates external
+   calendars, the approval procedure must first complete a current successful refresh or another
+   authoritative check. Stale or needs-review state blocks approval. The approval transaction
+   then rechecks native availability and active iCalendar blocks and inserts occupancy atomically;
+   a repaired phantom legacy hold is treated as a public pending request.
 6. Legacy pre-010 fingerprints are explicitly marked `legacy-md5-request-id`. Equal normalized
    retries upgrade to `sha256-v1` in the transaction; changed data remains an idempotency-key
    conflict.
 7. Stored request arrival/departure must match the quote snapshot or the row is classified as
    `database_corruption`.
 8. Public dates are half-open local calendar dates. Money is safe non-negative integer minor
-   units. Tenant scope is part of every persistence key and query.
+   units. Tenant-owned domain keys and queries include organization scope and property scope where
+   applicable; trusted global operational keys follow the restrictions above.
 
 ## Persistence and migrations
 
@@ -104,6 +134,24 @@ Migration SQL in `packages/database-postgres/migrations/` is append-only and lis
 `schema_migrations`; old rows with a null checksum are baselined once, then mismatches fail
 closed with `MigrationDriftError`. Migration execution uses a schema advisory lock and remains
 concurrent-safe/idempotent.
+
+The current `booking_outbox` foreign key uses `ON DELETE CASCADE` from `booking_requests`.
+Deleting a booking request therefore deletes its linked outbox rows. A retention procedure must
+copy every required audit record to an approved independent retention store before it deletes the
+request; the outbox is not an audit copy that survives request deletion.
+
+## Verification boundaries
+
+PostgreSQL integration and Docker clean-room checks are mandatory release gates in the
+authoritative root [release checklist](../README.md#development-and-release-gates) and CI. The
+release needs the real PostgreSQL service and a running Docker engine. An unavailable service or
+engine blocks the release; mocked evidence does not replace either gate.
+
+The local `pnpm scan:secrets` command scans tracked worktree files, non-ignored untracked files,
+and staged index snapshots. Ignored secret-bearing files require separate inspection. Git-history
+scanning is separate: before public release and after any suspected leak, use repository-host and
+Git-history secret scanning. Revoke or rotate every exposed credential, and purge or rewrite
+history where required. Rewriting history does not replace credential revocation or rotation.
 
 ## External storefront integration
 

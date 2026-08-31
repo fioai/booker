@@ -1,6 +1,7 @@
 /* global process */
 
 import { validateRuntimeEnvironment } from './lib/environment.mjs';
+import { loadEnvironment } from './lib/load-environment.mjs';
 
 function help() {
   process.stdout.write(
@@ -18,6 +19,7 @@ async function main() {
     help();
     return;
   }
+  loadEnvironment();
   const config = validateRuntimeEnvironment(process.env);
   const [databaseModule, apiModule, seedModule] = await Promise.all([
     import('../packages/database-postgres/dist/index.js'),

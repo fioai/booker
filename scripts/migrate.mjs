@@ -2,7 +2,8 @@
 
 import { createPostgresDatabase, runMigrations } from '../packages/database-postgres/dist/index.js';
 
-import { safeEnvironmentSummary, validateMigrationEnvironment } from './lib/environment.mjs';
+import { validateMigrationEnvironment } from './lib/environment.mjs';
+import { loadEnvironment } from './lib/load-environment.mjs';
 
 function help() {
   process.stdout.write(
@@ -20,17 +21,23 @@ async function main() {
     help();
     return;
   }
+  loadEnvironment();
   const config = validateMigrationEnvironment(process.env);
   const database = createPostgresDatabase({
     connectionString: config.databaseUrl,
     schema: config.schema,
   });
   try {
-    await runMigrations(database);
+    const statuses = await runMigrations(database);
+    process.stdout.write(
+      [
+        'Migration checksum evidence:',
+        ...statuses.map(({ id, checksum }) => `${id} sha256=${checksum}`),
+      ].join('\n') + '\n',
+    );
   } finally {
     await database.close();
   }
-  process.stdout.write('Migrations applied (' + safeEnvironmentSummary(config) + ').\n');
 }
 
 main().catch((error) => {

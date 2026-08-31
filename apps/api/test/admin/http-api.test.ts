@@ -593,6 +593,42 @@ describe('owner admin authentication, authorization, and tenant-safe HTTP behavi
     );
   });
 
+  it.each([
+    ['unsupported_recurrence', 'The calendar source contained unsupported recurrence data.'],
+    ['invalid_transparency', 'The calendar source returned unsupported event transparency.'],
+  ] as const)('preserves the safe %s iCalendar error in admin health', async (code, message) => {
+    const feedUrl = 'https://calendar.example.test/private-feed.ics';
+    const token = 'private-feed-token';
+    const rawError = 'Raw parser error at parse.ts:655';
+    const deps = dependencies(passwordHash);
+    vi.mocked(deps.ical.health).mockReturnValue({
+      ...health,
+      error: {
+        code,
+        message: `${rawError}; feed=${feedUrl}?token=${token}`,
+      },
+    });
+    const { api, cookies } = await authenticatedApi(deps);
+
+    const response = await api.handle({
+      method: 'GET',
+      path: `/admin/properties/${propertyId}/ical/${health.sourceId}/health`,
+      headers: { cookie: cookies },
+    });
+
+    expect(response).toMatchObject({
+      status: 200,
+      body: {
+        sourceId: health.sourceId,
+        error: { code, message },
+      },
+    });
+    const serializedBody = JSON.stringify(response.body);
+    expect(serializedBody).not.toContain(feedUrl);
+    expect(serializedBody).not.toContain(token);
+    expect(serializedBody).not.toContain(rawError);
+  });
+
   it('lists private booking requests only through the authenticated tenant scope', async () => {
     const deps = dependencies(passwordHash);
     const { api, cookies } = await authenticatedApi(deps);

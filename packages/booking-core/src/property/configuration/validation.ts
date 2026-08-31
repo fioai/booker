@@ -74,14 +74,16 @@ function exceedsCodePointLimit(value: string, maximum: number): boolean {
   return false;
 }
 
-function hasForbiddenControl(value: string): boolean {
+function hasMalformedTextCodePoint(value: string): boolean {
   for (let offset = 0; offset < value.length; ) {
     const codePoint = value.codePointAt(offset);
     if (codePoint === undefined) {
       return false;
     }
 
+    // codePointAt combines a valid surrogate pair, so a returned surrogate is lone.
     if (
+      (codePoint >= 0xd800 && codePoint <= 0xdfff) ||
       (codePoint >= 0x0000 && codePoint <= 0x001f) ||
       (codePoint >= 0x007f && codePoint <= 0x009f) ||
       codePoint === 0x061c ||
@@ -135,8 +137,13 @@ export function readText(
     return undefined;
   }
 
-  if (hasForbiddenControl(value)) {
-    addValidationError(errors, field, 'malformed_string', `${field} contains forbidden controls.`);
+  if (hasMalformedTextCodePoint(value)) {
+    addValidationError(
+      errors,
+      field,
+      'malformed_string',
+      `${field} contains incomplete Unicode characters or forbidden controls.`,
+    );
     return undefined;
   }
 

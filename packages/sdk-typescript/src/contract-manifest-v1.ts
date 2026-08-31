@@ -1,4 +1,10 @@
+import {
+  deepFreezeV1,
+  PUBLIC_PROPERTY_RESPONSE_BOUNDS_V1,
+  PUBLIC_VALIDATION_ISSUE_BOUNDS_V1,
+} from './contract-constraints-v1.js';
 import type {
+  PublicApiErrorCodeV1,
   PublicApiErrorResponseV1,
   PublicAvailabilityV1,
   PublicPropertyV1,
@@ -7,6 +13,7 @@ import type {
   PublicRequestToBookV1,
   PublicStayInputV1,
   PublicStayV1,
+  PublicValidationIssueV1,
 } from './public-contract-v1.js';
 
 const operations = {
@@ -14,18 +21,36 @@ const operations = {
     method: 'GET',
     path: '/v1/properties/{propertyId}',
     operationId: 'getPublicPropertyV1',
+    statuses: [200, 400, 404, 500],
+    errorCodesByStatus: {
+      400: ['validation_failed'],
+      404: ['property_not_found'],
+      500: ['internal_error'],
+    } as const satisfies Readonly<Record<number, readonly PublicApiErrorCodeV1[]>>,
     responseSchema: 'PublicPropertyV1',
   },
   availability: {
     method: 'GET',
     path: '/v1/properties/{propertyId}/availability',
     operationId: 'getPublicAvailabilityV1',
+    statuses: [200, 400, 404, 500],
+    errorCodesByStatus: {
+      400: ['validation_failed'],
+      404: ['property_not_found'],
+      500: ['internal_error'],
+    } as const satisfies Readonly<Record<number, readonly PublicApiErrorCodeV1[]>>,
     responseSchema: 'PublicAvailabilityV1',
   },
   quote: {
     method: 'POST',
     path: '/v1/properties/{propertyId}/quote',
     operationId: 'getPublicQuoteV1',
+    statuses: [200, 400, 404, 500],
+    errorCodesByStatus: {
+      400: ['validation_failed'],
+      404: ['property_not_found', 'quote_unavailable'],
+      500: ['internal_error'],
+    } as const satisfies Readonly<Record<number, readonly PublicApiErrorCodeV1[]>>,
     requestSchema: 'PublicStayInputV1',
     responseSchema: 'PublicQuoteV1',
   },
@@ -33,6 +58,13 @@ const operations = {
     method: 'POST',
     path: '/v1/properties/{propertyId}/request-to-book',
     operationId: 'requestToBookV1',
+    statuses: [201, 400, 404, 409, 500],
+    errorCodesByStatus: {
+      400: ['validation_failed'],
+      404: ['property_not_found', 'quote_unavailable'],
+      409: ['stay_unavailable', 'request_conflict'],
+      500: ['internal_error'],
+    } as const satisfies Readonly<Record<number, readonly PublicApiErrorCodeV1[]>>,
     requestSchema: 'PublicRequestToBookInputV1',
     responseSchema: 'PublicRequestToBookV1',
   },
@@ -70,6 +102,7 @@ const schemas = {
       'amenities',
       'hostNotes',
     ],
+    bounds: PUBLIC_PROPERTY_RESPONSE_BOUNDS_V1,
   },
   PublicStayInputV1: {
     fields: ['arrival', 'departure'],
@@ -137,6 +170,11 @@ const schemas = {
       'createdAt',
     ],
   },
+  PublicValidationIssueV1: {
+    fields: ['field', 'code', 'message'],
+    required: ['field', 'code', 'message'],
+    bounds: PUBLIC_VALIDATION_ISSUE_BOUNDS_V1,
+  },
   PublicApiErrorResponseV1: {
     fields: ['error'],
     required: ['error'],
@@ -144,11 +182,11 @@ const schemas = {
 } as const;
 
 /** Hand-authored typed SDK metadata used to check routes and schemas against OpenAPI. */
-export const PUBLIC_BOOKING_CONTRACT_MANIFEST_V1 = Object.freeze({
+export const PUBLIC_BOOKING_CONTRACT_MANIFEST_V1 = deepFreezeV1({
   openapiPath: '/openapi/v1.json',
   operations,
   schemas,
-});
+} as const);
 
 type EqualV1<Left, Right> =
   (<Value>() => Value extends Left ? 1 : 2) extends <Value>() => Value extends Right ? 1 : 2
@@ -173,6 +211,9 @@ export type PublicBookingManifestTypeChecksV1 = [
   >,
   AssertV1<
     EqualV1<keyof PublicRequestToBookV1, (typeof schemas.PublicRequestToBookV1.fields)[number]>
+  >,
+  AssertV1<
+    EqualV1<keyof PublicValidationIssueV1, (typeof schemas.PublicValidationIssueV1.fields)[number]>
   >,
   AssertV1<
     EqualV1<

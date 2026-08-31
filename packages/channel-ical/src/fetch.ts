@@ -3,6 +3,7 @@ import { request as httpRequest, type IncomingMessage } from 'node:http';
 import { isIP } from 'node:net';
 import { request as httpsRequest } from 'node:https';
 import { TextDecoder, TextEncoder } from 'node:util';
+import { isGlobalRoutableAddress, normalizeIpAddress } from './address-policy.js';
 
 export const ICAL_FETCH_LIMITS = Object.freeze({
   maxRedirects: 3,
@@ -104,6 +105,15 @@ export interface ICalFetcher {
 
 const textEncoder = new TextEncoder();
 
+function isAsyncBody(body: unknown): body is AsyncIterable<Uint8Array> {
+  return (
+    typeof body === 'object' &&
+    body !== null &&
+    Symbol.asyncIterator in body &&
+    typeof body[Symbol.asyncIterator] === 'function'
+  );
+}
+
 function boundedOption(
   value: number | undefined,
   fallback: number,
@@ -117,116 +127,6 @@ function boundedOption(
     throw new RangeError(`${name} must be a bounded integer.`);
   }
   return value ?? fallback;
-}
-
-function cleanAddress(address: string): string {
-  return address
-    .trim()
-    .replace(/^\[|\]$/gu, '')
-    .toLowerCase();
-}
-
-function ipv4Parts(address: string): readonly number[] | null {
-  const parts = address.split('.');
-  if (parts.length !== 4 || parts.some((part) => !/^\d{1,3}$/u.test(part))) {
-    return null;
-  }
-  const numbers = parts.map(Number);
-  return numbers.every((part) => part >= 0 && part <= 255) ? numbers : null;
-}
-
-function expandIpv6(address: string): readonly number[] | null {
-  const normalized = cleanAddress(address).split('%', 1)[0] as string;
-  const ipv4Separator = normalized.lastIndexOf(':');
-  let value = normalized;
-  if (normalized.includes('.') && ipv4Separator > 0) {
-    const ipv4 = ipv4Parts(normalized.slice(ipv4Separator + 1));
-    if (ipv4 === null) {
-      return null;
-    }
-    const high = ((ipv4[0] as number) << 8) | (ipv4[1] as number);
-    const low = ((ipv4[2] as number) << 8) | (ipv4[3] as number);
-    value = `${normalized.slice(0, ipv4Separator)}:${high.toString(16)}:${low.toString(16)}`;
-  }
-  const halves = value.split('::');
-  if (halves.length > 2) {
-    return null;
-  }
-  const left =
-    halves[0] === '' ? [] : (halves[0] as string).split(':').map((part) => parseInt(part, 16));
-  const right =
-    halves.length === 1 || halves[1] === ''
-      ? []
-      : (halves[1] as string).split(':').map((part) => parseInt(part, 16));
-  if (
-    left.some((part) => !Number.isInteger(part) || part < 0 || part > 0xffff) ||
-    right.some((part) => !Number.isInteger(part) || part < 0 || part > 0xffff)
-  ) {
-    return null;
-  }
-  const missing = 8 - left.length - right.length;
-  if ((halves.length === 1 && missing !== 0) || missing < 0) {
-    return null;
-  }
-  return [...left, ...Array.from({ length: missing }, () => 0), ...right];
-}
-
-function isBlockedAddress(rawAddress: string): boolean {
-  const address = cleanAddress(rawAddress);
-  const family = isIP(address);
-  if (family === 4) {
-    const parts = ipv4Parts(address);
-    if (parts === null) {
-      return true;
-    }
-    const first = parts[0] as number;
-    const second = parts[1] as number;
-    const third = parts[2] as number;
-    return (
-      first === 0 ||
-      first === 10 ||
-      first === 127 ||
-      (first === 100 && second >= 64 && second <= 127) ||
-      (first === 169 && second === 254) ||
-      (first === 172 && second >= 16 && second <= 31) ||
-      (first === 192 && (second === 0 || second === 168)) ||
-      (first === 192 && second === 0 && third === 0) ||
-      (first === 192 && second === 0 && third === 2) ||
-      (first === 198 && second === 18) ||
-      (first === 198 && second === 19) ||
-      (first === 198 && second === 51 && third === 100) ||
-      (first === 203 && second === 0 && third === 113) ||
-      first >= 224
-    );
-  }
-  if (family !== 6) {
-    return true;
-  }
-  const parts = expandIpv6(address);
-  if (parts === null) {
-    return true;
-  }
-  const first = parts[0] as number;
-  const second = parts[1] as number;
-  const isUnspecified = parts.every((part) => part === 0);
-  const isLoopback = parts.slice(0, 7).every((part) => part === 0) && parts[7] === 1;
-  const isUniqueLocal = (first & 0xfe00) === 0xfc00;
-  const isLinkLocal = (first & 0xffc0) === 0xfe80;
-  const isMulticast = (first & 0xff00) === 0xff00;
-  const isDocumentation = first === 0x2001 && second === 0x0db8;
-  const isMappedIpv4 = parts.slice(0, 5).every((part) => part === 0) && parts[5] === 0xffff;
-  const mappedIpv4 = `${(parts[6] as number) >> 8}.${(parts[6] as number) & 0xff}.${
-    (parts[7] as number) >> 8
-  }.${(parts[7] as number) & 0xff}`;
-  return (
-    isUnspecified ||
-    isLoopback ||
-    isUniqueLocal ||
-    isLinkLocal ||
-    isMulticast ||
-    isDocumentation ||
-    (isMappedIpv4 && isBlockedAddress(mappedIpv4))
-  );
 }
 
 function isBlockedHostname(hostname: string): boolean {
@@ -265,7 +165,8 @@ function validateUrl(input: string | URL): URL {
   if (isBlockedHostname(url.hostname)) {
     throw fetchError('blocked_host');
   }
-  if (isIP(cleanAddress(url.hostname)) !== 0 && isBlockedAddress(url.hostname)) {
+  const literalAddress = normalizeIpAddress(url.hostname);
+  if (isIP(literalAddress) !== 0 && !isGlobalRoutableAddress(literalAddress)) {
     throw fetchError('blocked_address');
   }
   return url;
@@ -282,12 +183,12 @@ async function defaultResolveHost(hostname: string): Promise<readonly string[]> 
 
 function stableAddresses(addresses: readonly string[]): readonly string[] {
   const cleaned = [
-    ...new Set(addresses.map(cleanAddress).filter((address) => address.length > 0)),
+    ...new Set(addresses.map(normalizeIpAddress).filter((address) => address.length > 0)),
   ].sort();
   if (cleaned.length === 0 || cleaned.some((address) => isIP(address) === 0)) {
     throw fetchError('dns_error');
   }
-  if (cleaned.some(isBlockedAddress)) {
+  if (cleaned.some((address) => !isGlobalRoutableAddress(address))) {
     throw fetchError('blocked_address');
   }
   return cleaned;
@@ -295,7 +196,7 @@ function stableAddresses(addresses: readonly string[]): readonly string[] {
 
 function canonicalAddresses(addresses: readonly string[]): readonly string[] {
   const cleaned = [
-    ...new Set(addresses.map(cleanAddress).filter((address) => address.length > 0)),
+    ...new Set(addresses.map(normalizeIpAddress).filter((address) => address.length > 0)),
   ].sort();
   if (cleaned.length === 0 || cleaned.some((address) => isIP(address) === 0)) {
     throw fetchError('dns_error');
@@ -307,7 +208,7 @@ async function resolveStableAddresses(
   url: URL,
   resolver: ICalHostResolver,
 ): Promise<readonly string[]> {
-  const literal = cleanAddress(url.hostname);
+  const literal = normalizeIpAddress(url.hostname);
   if (isIP(literal) !== 0) {
     return stableAddresses([literal]);
   }
@@ -353,7 +254,7 @@ function pinnedTransport(url: URL, request: ICalTransportRequest): Promise<ICalT
   if (address === undefined) {
     return Promise.reject(fetchError('dns_error'));
   }
-  const host = cleanAddress(url.hostname);
+  const host = normalizeIpAddress(url.hostname);
   const port = Number(url.port || (url.protocol === 'https:' ? 443 : 80));
   const options = {
     hostname: address,
@@ -443,11 +344,7 @@ async function readBody(
   } else if (body instanceof Uint8Array) {
     addChunk(body);
   } else {
-    if (
-      body === null ||
-      typeof body !== 'object' ||
-      typeof (body as AsyncIterable<Uint8Array>)[Symbol.asyncIterator] !== 'function'
-    ) {
+    if (!isAsyncBody(body)) {
       throw fetchError('network_error');
     }
     const iterator = body[Symbol.asyncIterator]();
@@ -510,11 +407,7 @@ async function discardBody(
     count(body);
     return;
   }
-  if (
-    body === null ||
-    typeof body !== 'object' ||
-    typeof (body as AsyncIterable<Uint8Array>)[Symbol.asyncIterator] !== 'function'
-  ) {
+  if (!isAsyncBody(body)) {
     throw fetchError('network_error');
   }
   const iterator = body[Symbol.asyncIterator]();
@@ -541,12 +434,27 @@ async function discardBody(
   }
 }
 
+async function disposeBody(
+  body: ICalTransportBody,
+  maxBodyBytes: number,
+  signal: AbortSignal,
+): Promise<void> {
+  if (typeof body === 'object' && body !== null && 'destroy' in body) {
+    const destroy = body.destroy;
+    if (typeof destroy === 'function') {
+      destroy.call(body);
+      return;
+    }
+  }
+  await discardBody(body, maxBodyBytes, signal);
+}
+
 async function withTimeout<T>(
   operation: (signal: AbortSignal) => Promise<T>,
   timeoutMs: number,
 ): Promise<T> {
   const controller = new AbortController();
-  let timeout: ReturnType<typeof setTimeout> | undefined;
+  let timeout: NodeJS.Timeout | undefined;
   let didTimeout = false;
   const timeoutPromise = new Promise<never>((_resolve, reject) => {
     timeout = setTimeout(() => {
@@ -570,18 +478,22 @@ async function withTimeout<T>(
     }
     throw normalizeFetchError(error, 'network_error');
   } finally {
-    if (timeout !== undefined) {
-      clearTimeout(timeout);
-    }
+    clearTimeout(timeout);
     if (!controller.signal.aborted && didTimeout) {
       controller.abort();
     }
   }
 }
 
-function locationHeader(response: ICalTransportResponse): string | undefined {
-  return headerValue(response.headers, 'location');
-}
+type FetchHopResult =
+  | {
+      readonly kind: 'redirect';
+      readonly location: string | undefined;
+    }
+  | {
+      readonly kind: 'success';
+      readonly body: string;
+    };
 
 function isRedirectStatus(status: number): boolean {
   return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
@@ -627,25 +539,45 @@ export function createICalFetcher(options: ICalFetchOptions = {}): ICalFetcher {
       let url = validateUrl(input);
       for (let redirect = 0; ; redirect += 1) {
         const addresses = await withTimeout(() => resolveStableAddresses(url, resolver), timeoutMs);
-        let response: ICalTransportResponse;
-        try {
-          response = await withTimeout(async (signal) => {
-            const nextResponse = await transport(url, { signal, addresses });
-            validateResponse(nextResponse);
-            if (isRedirectStatus(nextResponse.status)) {
-              await discardBody(nextResponse.body, maxBodyBytes, signal);
-            }
-            return nextResponse;
-          }, timeoutMs);
-        } catch (error) {
-          throw normalizeFetchError(error, 'network_error');
-        }
+        const result = await withTimeout<FetchHopResult>(async (signal) => {
+          const response = await transport(url, { signal, addresses });
+          validateResponse(response);
+          if (isRedirectStatus(response.status)) {
+            await disposeBody(response.body, maxBodyBytes, signal);
+            return {
+              kind: 'redirect',
+              location: headerValue(response.headers, 'location'),
+            };
+          }
+          if (response.status < 200 || response.status >= 300) {
+            await disposeBody(response.body, maxBodyBytes, signal);
+            throw fetchError('http_error');
+          }
 
-        if (isRedirectStatus(response.status)) {
+          const contentLength = headerValue(response.headers, 'content-length');
+          if (contentLength !== undefined) {
+            const normalizedLength = contentLength.trim();
+            if (!/^\d+$/u.test(normalizedLength)) {
+              await disposeBody(response.body, maxBodyBytes, signal);
+              throw fetchError('network_error');
+            }
+            const length = Number(normalizedLength);
+            if (!Number.isSafeInteger(length) || length > maxBodyBytes) {
+              await disposeBody(response.body, maxBodyBytes, signal);
+              throw fetchError('body_limit');
+            }
+          }
+          return {
+            kind: 'success',
+            body: await readBody(response.body, maxBodyBytes, signal),
+          };
+        }, timeoutMs);
+
+        if (result.kind === 'redirect') {
           if (redirect >= maxRedirects) {
             throw fetchError('redirect_limit');
           }
-          const location = locationHeader(response);
+          const location = result.location;
           if (location === undefined || location.trim().length === 0 || /[\r\n]/u.test(location)) {
             throw fetchError('redirect_location');
           }
@@ -659,25 +591,8 @@ export function createICalFetcher(options: ICalFetchOptions = {}): ICalFetcher {
           }
           continue;
         }
-        if (response.status < 200 || response.status >= 300) {
-          throw fetchError('http_error');
-        }
-        const contentLength = headerValue(response.headers, 'content-length');
-        if (contentLength !== undefined) {
-          const normalizedLength = contentLength.trim();
-          if (!/^\d+$/u.test(normalizedLength)) {
-            throw fetchError('network_error');
-          }
-          const length = Number(normalizedLength);
-          if (!Number.isSafeInteger(length) || length > maxBodyBytes) {
-            throw fetchError('body_limit');
-          }
-        }
         return {
-          body: await withTimeout(
-            (signal) => readBody(response.body, maxBodyBytes, signal),
-            timeoutMs,
-          ),
+          body: result.body,
           finalUrl: url.href,
         };
       }

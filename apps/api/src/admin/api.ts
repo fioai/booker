@@ -48,11 +48,9 @@ import {
   serializeRatePlan,
   serializeUser,
 } from './serialization.js';
+import { loadProperty, scopeFor, scopedBookingRequest } from './scope.js';
 import {
   canonicalProperty,
-  loadProperty,
-  scopeFor,
-  scopedBookingRequest,
   validateManualBlockInput,
   validatePropertyUpdate,
   validateRateInput,

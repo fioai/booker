@@ -331,6 +331,75 @@ describe('PropertyConfiguration', () => {
     ]);
   });
 
+  it.each([
+    ['id', 'id', (text: string) => withChanges({ id: text })],
+    ['name', 'name', (text: string) => withChanges({ name: text })],
+    ['summary', 'summary', (text: string) => withChanges({ summary: text })],
+    ['country', 'country', (text: string) => withChanges({ country: text })],
+    ['timezone', 'timezone', (text: string) => withChanges({ timezone: text })],
+    ['currency', 'currency', (text: string) => withChanges({ currency: text })],
+    ['property type', 'propertyType', (text: string) => withChanges({ propertyType: text })],
+    [
+      'bed type',
+      'bedConfiguration[0].type',
+      (text: string) =>
+        withChanges({
+          bedConfiguration: [{ type: text, quantity: 1 }],
+        }),
+    ],
+    [
+      'amenity',
+      'amenities[0]',
+      (text: string) =>
+        withChanges({
+          amenities: [text],
+        }),
+    ],
+    ['host notes', 'hostNotes', (text: string) => withChanges({ hostNotes: text })],
+    [
+      'operational notes',
+      'operationalNotes',
+      (text: string) => withChanges({ operationalNotes: text }),
+    ],
+  ] as const)('rejects lone surrogates in canonical %s text', (_name, field, inputFor) => {
+    for (const loneSurrogate of ['\ud83c', '\udfe0']) {
+      expectErrors(inputFor(loneSurrogate), [[field, 'malformed_string']]);
+    }
+  });
+
+  it.each([
+    [
+      'name',
+      (text: string) => withChanges({ name: `Astral ${text}` }),
+      (configuration: PropertyConfiguration) => configuration.name,
+    ],
+    [
+      'summary',
+      (text: string) => withChanges({ summary: `Astral ${text}` }),
+      (configuration: PropertyConfiguration) => configuration.summary,
+    ],
+    [
+      'amenity',
+      (text: string) => withChanges({ amenities: [`Astral ${text}`] }),
+      (configuration: PropertyConfiguration) => configuration.amenities[0],
+    ],
+    [
+      'host notes',
+      (text: string) => withChanges({ hostNotes: `Astral ${text}` }),
+      (configuration: PropertyConfiguration) => configuration.hostNotes,
+    ],
+    [
+      'operational notes',
+      (text: string) => withChanges({ operationalNotes: `Astral ${text}` }),
+      (configuration: PropertyConfiguration) => configuration.operationalNotes,
+    ],
+  ] as const)('accepts valid astral pairs in canonical %s text', (_name, inputFor, readText) => {
+    const astralPair = '\ud83c\udfe0';
+    const configuration = validConfiguration(inputFor(astralPair));
+
+    expect(readText(configuration)).toContain(astralPair);
+  });
+
   it('accepts null-prototype own-property records', () => {
     const inputRecord = Object.assign(Object.create(null), sampleBungalowFixture) as Record<
       string,

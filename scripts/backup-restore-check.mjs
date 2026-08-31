@@ -7,6 +7,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { validateEnvironment } from './lib/environment.mjs';
+import { loadEnvironment } from './lib/load-environment.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const TABLES = [
@@ -29,9 +30,10 @@ const IDENTIFIER_PATTERN = /^[a-z_][a-z0-9_]*$/u;
 function help() {
   process.stdout.write(
     [
-      'Usage: node scripts/backup-restore-check.mjs',
+      'Usage: node scripts/backup-restore-check.mjs --confirm-database <decoded-name>',
       '',
-      'Requires BOOKING_ENGINE_ENV=local|test, DATABASE_URL, and a running isolated PostgreSQL Compose service.',
+      'Requires BOOKING_ENGINE_ENV=local|test, DATABASE_URL, an exact database-name confirmation,',
+      'and a literal loopback PostgreSQL host: 127.0.0.1, localhost, or ::1.',
       'Uses pg_dump/pg_restore from the configured Docker Compose postgres service when host tools',
       'are unavailable. The temporary restore database is created and removed only with a hard prefix.',
     ].join('\n') + '\n',
@@ -92,6 +94,48 @@ function connectionParts(databaseUrl) {
   };
 }
 
+function requireDatabaseUrlWithoutQuery(url) {
+  if (url.search.length > 0) {
+    throw new Error('backup/restore DATABASE_URL must not contain query parameters.');
+  }
+}
+
+function requireConfirmedDatabase(args, expectedDatabase) {
+  const commandArguments = args[0] === '--' ? args.slice(1) : args;
+  if (
+    commandArguments.length !== 2 ||
+    commandArguments[0] !== '--confirm-database' ||
+    commandArguments[1].length === 0 ||
+    commandArguments[1] !== expectedDatabase
+  ) {
+    throw new Error(
+      'backup/restore requires --confirm-database with the exact decoded DATABASE_URL database name.',
+    );
+  }
+}
+
+function requirePostgresServiceSelector() {
+  const service = process.env.BACKUP_POSTGRES_SERVICE?.trim() || 'postgres';
+  if (!/^[a-z0-9][a-z0-9_-]{0,62}$/u.test(service)) {
+    throw new Error('BACKUP_POSTGRES_SERVICE must be a lowercase Docker Compose service selector.');
+  }
+  return service;
+}
+
+function requireLocalDatabaseHost(url) {
+  const hostname = url.hostname.toLowerCase();
+  const loopback = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
+  if (!loopback) {
+    throw new Error(
+      'backup/restore requires DATABASE_URL host to be 127.0.0.1, localhost, or ::1.',
+    );
+  }
+}
+
+export function libpqHostArgument(hostname) {
+  return hostname === '[::1]' ? '::1' : hostname;
+}
+
 function composeArgs(service, shellCommand) {
   const args = ['compose'];
   const project = process.env.COMPOSE_PROJECT_NAME?.trim();
@@ -102,10 +146,32 @@ function composeArgs(service, shellCommand) {
   return args;
 }
 
-async function runPostgresTool(tool, parts, database, input) {
+export function configureBackupCompose(environmentSource) {
+  const service = requirePostgresServiceSelector();
+  let childEnvironment;
+  switch (environmentSource) {
+    case 'process':
+      childEnvironment = Object.freeze({ COMPOSE_DISABLE_ENV_FILE: 'true' });
+      break;
+    case 'file':
+    case 'none':
+      childEnvironment = undefined;
+      break;
+    default:
+      throw new Error('backup/restore received an unknown environment source.');
+  }
+  return Object.freeze({
+    childEnvironment,
+    commandArguments(shellCommand) {
+      return composeArgs(service, shellCommand);
+    },
+  });
+}
+
+async function runPostgresTool(tool, compose, parts, database, input) {
   const hostTool = process.env.BACKUP_USE_HOST_TOOLS === 'true';
-  const service = process.env.BACKUP_POSTGRES_SERVICE?.trim() || 'postgres';
   if (hostTool) {
+    const host = libpqHostArgument(parts.url.hostname);
     const command = tool === 'pg_dump' ? 'pg_dump' : 'pg_restore';
     const args =
       tool === 'pg_dump'
@@ -114,7 +180,7 @@ async function runPostgresTool(tool, parts, database, input) {
             '--no-owner',
             '--no-acl',
             '--host',
-            parts.url.hostname,
+            host,
             '--port',
             String(parts.url.port || 5432),
             '--username',
@@ -127,7 +193,7 @@ async function runPostgresTool(tool, parts, database, input) {
             '--no-acl',
             '--exit-on-error',
             '--host',
-            parts.url.hostname,
+            host,
             '--port',
             String(parts.url.port || 5432),
             '--username',
@@ -153,7 +219,10 @@ async function runPostgresTool(tool, parts, database, input) {
         safeUser +
         ' --dbname=' +
         safeDatabase;
-  const result = await runProcess('docker', composeArgs(service, command), { input });
+  const result = await runProcess('docker', compose.commandArguments(command), {
+    env: compose.childEnvironment,
+    input,
+  });
   if (result.code !== 0) {
     const detail = result.stderr.trim().slice(-1_000);
     throw new Error(
@@ -230,11 +299,16 @@ async function main() {
     help();
     return;
   }
+  const environmentSource = loadEnvironment();
   const config = validateEnvironment(process.env, { requireApplicationScope: false });
   if (config.environment !== 'local' && config.environment !== 'test') {
     throw new Error('backup/restore verification is limited to local and test environments.');
   }
   const parts = connectionParts(config.databaseUrl);
+  requireDatabaseUrlWithoutQuery(parts.url);
+  requireLocalDatabaseHost(parts.url);
+  const compose = configureBackupCompose(environmentSource);
+  requireConfirmedDatabase(process.argv.slice(2), parts.database);
   const schema = config.schema;
   const { Pool } = await import('pg');
   const sourcePool = new Pool({ connectionString: config.databaseUrl });
@@ -272,7 +346,7 @@ async function main() {
     } finally {
       await targetEmptyPool.end();
     }
-    const dump = await runPostgresTool('pg_dump', parts, parts.database);
+    const dump = await runPostgresTool('pg_dump', compose, parts, parts.database);
     if (dump.byteLength < 128) {
       throw new Error('pg_dump produced an unexpectedly small backup.');
     }
@@ -280,7 +354,7 @@ async function main() {
     const dumpPath = resolve(tempDirectory, 'source.dump');
     await writeFile(dumpPath, dump, { mode: 0o600 });
     const restoreInput = await readFile(dumpPath);
-    await runPostgresTool('pg_restore', parts, targetName, restoreInput);
+    await runPostgresTool('pg_restore', compose, parts, targetName, restoreInput);
     const targetPool = new Pool({ connectionString: targetUrl.toString() });
     try {
       await targetPool.query('SELECT 1');
@@ -309,8 +383,10 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  const message = error instanceof Error ? error.message : 'backup/restore verification failed';
-  process.stderr.write('Backup/restore failed: ' + message + '\n');
-  process.exitCode = 1;
-});
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    const message = error instanceof Error ? error.message : 'backup/restore verification failed';
+    process.stderr.write('Backup/restore failed: ' + message + '\n');
+    process.exitCode = 1;
+  });
+}

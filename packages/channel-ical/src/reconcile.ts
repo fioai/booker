@@ -1,3 +1,4 @@
+import { ICAL_SEQUENCE_MAX } from './protocol-limits.js';
 import type { ICalEvent, ICalEventStatus } from './parse.js';
 
 export interface ICalScope {
@@ -177,7 +178,10 @@ function validateEvent(event: ICalEvent): void {
   ) {
     throw new TypeError('iCalendar event status is invalid.');
   }
-  if (event.sequence !== null && (!Number.isSafeInteger(event.sequence) || event.sequence < 0)) {
+  if (
+    event.sequence !== null &&
+    (!Number.isInteger(event.sequence) || event.sequence < 0 || event.sequence > ICAL_SEQUENCE_MAX)
+  ) {
     throw new TypeError('iCalendar event sequence is invalid.');
   }
   if (

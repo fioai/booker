@@ -1,4 +1,8 @@
-> **Archived verification record:** Historical evidence only. Current gates are the root scripts and CI workflow. The former `apps/admin` package and standalone admin listener are removed; use `apps/api` admin views and `createApiHttpServer`.
+> **Archived verification record:** Historical evidence only. Use the single authoritative
+> [README release checklist](../README.md#development-and-release-gates). The CI workflow and root
+> scripts implement its checks; they do not define a second command list. The former `apps/admin`
+> package and standalone admin listener are removed; use `apps/api` admin views and
+> `createApiHttpServer`.
 
 # Owner authentication and same-domain admin verification
 

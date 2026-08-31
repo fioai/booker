@@ -28,12 +28,18 @@ const availability = await client.getAvailability(property.id, {
 });
 ```
 
-For environments without a global `fetch`, inject one:
+For environments without a global `fetch`, the consumer must install or provide a fetch
+implementation. For example, install `undici` in the consumer project, then inject its named
+`fetch` function:
 
 ```ts
+import { fetch as undiciFetch } from 'undici';
+
+import { createBookingEngineClientV1 } from '@booking-engine/sdk-typescript';
+
 const client = createBookingEngineClientV1({
   baseUrl: 'https://booking.example.test',
-  fetch: (url, init) => fetch(url, init),
+  fetch: undiciFetch,
 });
 ```
 
@@ -45,9 +51,10 @@ const client = createBookingEngineClientV1({
 - `requestToBook(propertyId, input, { idempotencyKey })`.
 
 Request-to-book options are required. The idempotency key is sent in the `Idempotency-Key`
-header and is never added to the JSON body. A successful request acknowledges a public pending
-request; guest contact fields, tenant identifiers, operational notes, and other private fields
-are not part of the response.
+header and is never added to the JSON body. A first successful request creates a pending request.
+An idempotent replay returns the existing request with its current lifecycle status. Guest
+contact fields, tenant identifiers, operational notes, and other private fields are not part of
+the response.
 
 All local-date intervals are half-open (`[arrival, departure)`) and money values are integer
 minor units. Invalid responses and error payloads fail closed as `BookingEngineApiErrorV1`;

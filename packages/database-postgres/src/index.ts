@@ -68,7 +68,6 @@ export {
   type BookingOutboxRepository,
   type BookingOutboxStatus,
   type OutboxDeliveryErrorCode,
-  type OutboxDeliveryPort,
 } from './booking/outbox-repository.js';
 export { createPostgresICalBlockStore, PostgresICalBlockStore } from './ical/block-repository.js';
 export {

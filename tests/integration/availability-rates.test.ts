@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { Pool } from 'pg';
+import { Pool, type QueryResult, type QueryResultRow } from 'pg';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import type { PropertyConfigurationInput } from '../../packages/booking-core/src/index.js';
@@ -14,6 +14,7 @@ import {
   type AvailabilityRepository,
   type OrganizationRepository,
   type PostgresDatabasePort,
+  type PostgresTransactionPort,
   type PropertyRepository,
   type RateRepository,
 } from '../../packages/database-postgres/src/index.js';
@@ -24,6 +25,63 @@ const connectionString =
 const runId = randomUUID().replaceAll('-', '').slice(0, 12);
 const integrationSchema = `availability_test_${runId}`;
 const table = (name: string): string => `"${integrationSchema}"."${name}"`;
+
+interface TransactionQuery {
+  readonly text: string;
+  readonly values: readonly unknown[] | undefined;
+}
+
+interface TransactionQueryHooks {
+  readonly afterQueryStarted?: (query: TransactionQuery) => Promise<void> | void;
+  readonly afterQuery?: (query: TransactionQuery) => Promise<void> | void;
+}
+
+function createDeferred<T>(): {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T) => void;
+} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
+function wrapTransactionQueries(
+  source: PostgresDatabasePort,
+  hooks: TransactionQueryHooks,
+): PostgresDatabasePort {
+  return {
+    dialect: source.dialect,
+    schema: source.schema,
+    query<Row extends QueryResultRow = QueryResultRow>(
+      text: string,
+      values?: readonly unknown[],
+    ): Promise<QueryResult<Row>> {
+      return source.query<Row>(text, values);
+    },
+    withTransaction<T>(work: (transaction: PostgresTransactionPort) => Promise<T>): Promise<T> {
+      return source.withTransaction((transaction) => {
+        return work({
+          async query<Row extends QueryResultRow = QueryResultRow>(
+            text: string,
+            values?: readonly unknown[],
+          ): Promise<QueryResult<Row>> {
+            const query = { text, values };
+            const resultPromise = transaction.query<Row>(text, values);
+            await hooks.afterQueryStarted?.(query);
+            const result = await resultPromise;
+            await hooks.afterQuery?.(query);
+            return result;
+          },
+        });
+      });
+    },
+    close(): Promise<void> {
+      return source.close();
+    },
+  };
+}
 
 function makeProperty(id: string): PropertyConfigurationInput {
   return {
@@ -120,8 +178,11 @@ describe('PostgreSQL availability, rates, and atomic occupancy', () => {
     ).rejects.toMatchObject({ code: 'rate_validation' });
   });
 
-  it('returns complete old or new rate snapshots during concurrent saves and quotes', async () => {
+  it('holds a rate read snapshot lock through overrides and transaction commit', async () => {
     const scope = { organizationId: organizationAId };
+    const sourceDatabase = database as PostgresDatabasePort;
+    const directPool = pool as Pool;
+    const propertyLockKey = `booking-engine:property:${organizationAId}:${propertyId}`;
     const planA = {
       currency: 'EUR',
       baseNightlyRateMinor: 10_000,
@@ -142,44 +203,128 @@ describe('PostgreSQL availability, rates, and atomic occupancy', () => {
     };
     await rates.saveRatePlan(scope, propertyId, planA);
 
-    const writes = Promise.all([
-      rates.saveRatePlan(scope, propertyId, planA),
-      rates.saveRatePlan(scope, propertyId, planB),
-    ]);
-    const reads = Promise.all(
-      Array.from({ length: 20 }, () => rates.getRatePlan(scope, propertyId)),
+    const releaseReaderAfterPlan = createDeferred<void>();
+    const releaseReaderAfterOverrides = createDeferred<void>();
+    const readerPlanRead = createDeferred<TransactionQuery>();
+    const readerOverridesRead = createDeferred<TransactionQuery>();
+    const readingRates = createPostgresRateRepository(
+      wrapTransactionQueries(sourceDatabase, {
+        afterQuery(query) {
+          if (query.text.includes(`FROM ${table('property_rate_plans')}`)) {
+            readerPlanRead.resolve(query);
+            return releaseReaderAfterPlan.promise;
+          }
+          if (query.text.includes(`FROM ${table('seasonal_rate_overrides')}`)) {
+            readerOverridesRead.resolve(query);
+            return releaseReaderAfterOverrides.promise;
+          }
+          return undefined;
+        },
+      }),
     );
-    const quotes = Promise.all(
-      Array.from({ length: 20 }, () =>
-        rates.quote(scope, propertyId, { arrival: '2026-08-01', departure: '2026-08-03' }),
-      ),
+    const writerLockStarted = createDeferred<TransactionQuery>();
+    const writerLockAcquired = createDeferred<TransactionQuery>();
+    const writerPlanQueryStarted = createDeferred<TransactionQuery>();
+    const releaseWriterAfterLock = createDeferred<void>();
+    let writerReachedPlanRow = false;
+    const writingRates = createPostgresRateRepository(
+      wrapTransactionQueries(sourceDatabase, {
+        afterQueryStarted(query) {
+          if (query.text.includes('pg_advisory_xact_lock')) {
+            writerLockStarted.resolve(query);
+          }
+          if (
+            query.text.includes(`INSERT INTO ${table('property_rate_plans')}`) &&
+            query.values?.[0] === organizationAId &&
+            query.values?.[1] === propertyId
+          ) {
+            writerReachedPlanRow = true;
+            writerPlanQueryStarted.resolve(query);
+          }
+        },
+        afterQuery(query) {
+          if (query.text.includes('pg_advisory_xact_lock')) {
+            writerLockAcquired.resolve(query);
+            return releaseWriterAfterLock.promise;
+          }
+          return undefined;
+        },
+      }),
     );
-    await writes;
-    const [readPlans, quoteResults] = await Promise.all([reads, quotes]);
 
-    for (const plan of readPlans) {
-      expect(plan).not.toBeNull();
-      const completeA =
-        plan?.baseNightlyRateMinor === 10_000 &&
-        plan.cleaningFeeMinor === 1_000 &&
-        plan.minimumStayNights === 2 &&
-        plan.seasonalOverrides.length === 1 &&
-        plan.seasonalOverrides[0]?.nightlyRateMinor === 15_000;
-      const completeB =
-        plan?.baseNightlyRateMinor === 22_000 &&
-        plan.cleaningFeeMinor === 4_000 &&
-        plan.minimumStayNights === 1 &&
-        plan.seasonalOverrides.length === 1 &&
-        plan.seasonalOverrides[0]?.nightlyRateMinor === 31_000;
-      expect(completeA || completeB).toBe(true);
-    }
-    for (const quote of quoteResults) {
-      expect([31_000, 66_000]).toContain(quote.totalMinor);
-      expect(
-        quote.totalMinor === 31_000
-          ? quote.nightlySubtotalMinor === 30_000 && quote.cleaningFeeMinor === 1_000
-          : quote.nightlySubtotalMinor === 62_000 && quote.cleaningFeeMinor === 4_000,
-      ).toBe(true);
+    const quotePromise = readingRates.quote(scope, propertyId, {
+      arrival: '2026-08-01',
+      departure: '2026-08-03',
+    });
+    let savePromise: ReturnType<RateRepository['saveRatePlan']> | undefined;
+    try {
+      const planQuery = await readerPlanRead.promise;
+      expect(planQuery.values).toEqual([organizationAId, propertyId]);
+
+      const lockProbe = await directPool.query<{ acquired: boolean }>(
+        'SELECT pg_try_advisory_xact_lock(hashtextextended($1, 0)) AS acquired',
+        [propertyLockKey],
+      );
+      expect(lockProbe.rows).toEqual([{ acquired: false }]);
+
+      savePromise = writingRates.saveRatePlan(scope, propertyId, planB);
+      const startedLockQuery = await writerLockStarted.promise;
+      expect(startedLockQuery.values).toEqual([propertyLockKey]);
+      expect(writerReachedPlanRow).toBe(false);
+
+      const committedSnapshot = await directPool.query<{
+        base_nightly_rate_minor: string;
+        cleaning_fee_minor: string;
+        nightly_rate_minor: string;
+      }>(
+        `
+          SELECT plan.base_nightly_rate_minor,
+                 plan.cleaning_fee_minor,
+                 override.nightly_rate_minor
+          FROM ${table('property_rate_plans')} AS plan
+          JOIN ${table('seasonal_rate_overrides')} AS override
+            ON override.organization_id = plan.organization_id
+           AND override.property_id = plan.property_id
+          WHERE plan.organization_id = $1 AND plan.property_id = $2
+        `,
+        [organizationAId, propertyId],
+      );
+      expect(committedSnapshot.rows).toEqual([
+        {
+          base_nightly_rate_minor: '10000',
+          cleaning_fee_minor: '1000',
+          nightly_rate_minor: '15000',
+        },
+      ]);
+
+      releaseReaderAfterPlan.resolve();
+      const overridesQuery = await readerOverridesRead.promise;
+      expect(overridesQuery.values).toEqual([organizationAId, propertyId]);
+      expect(writerReachedPlanRow).toBe(false);
+
+      releaseReaderAfterOverrides.resolve();
+      const quote = await quotePromise;
+      expect(quote).toMatchObject({
+        nightlySubtotalMinor: 30_000,
+        cleaningFeeMinor: 1_000,
+        totalMinor: 31_000,
+      });
+
+      const acquiredLockQuery = await writerLockAcquired.promise;
+      expect(acquiredLockQuery.values).toEqual([propertyLockKey]);
+      expect(writerReachedPlanRow).toBe(false);
+      releaseWriterAfterLock.resolve();
+
+      const writePlanQuery = await writerPlanQueryStarted.promise;
+      expect(writePlanQuery.values?.slice(0, 2)).toEqual([organizationAId, propertyId]);
+      const savedPlan = await savePromise;
+      expect(savedPlan).toMatchObject(planB);
+      await expect(rates.getRatePlan(scope, propertyId)).resolves.toMatchObject(planB);
+    } finally {
+      releaseReaderAfterPlan.resolve();
+      releaseReaderAfterOverrides.resolve();
+      releaseWriterAfterLock.resolve();
+      await Promise.allSettled([quotePromise, ...(savePromise === undefined ? [] : [savePromise])]);
     }
   });
 
@@ -302,6 +447,7 @@ describe('PostgreSQL availability, rates, and atomic occupancy', () => {
     const scope = { organizationId: organizationAId };
     for (const [index, reason] of [
       'Owner\u0000 block',
+      'Owner\u0085 block',
       'Owner\u202e block',
       'Owner\u2066 block',
     ].entries()) {

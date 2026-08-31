@@ -2,6 +2,10 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  analyzeRuntimeWorkspaceDependencies,
+  validateWorkspaceGraph,
+} from './lib/workspace-graph.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const violations = [];
@@ -58,7 +62,7 @@ async function checkRemovedBoundaries() {
     }
   }
   for (const directory of ['apps', 'packages', 'scripts', 'tests']) {
-    for (const file of await filesUnder(join(root, directory)).catch(() => [])) {
+    for (const file of await filesUnder(join(root, directory))) {
       const source = await readFile(file, 'utf8');
       if (source.includes('ApiModuleDependencies')) {
         violations.push(`removed marker export reappeared: ${relative(root, file)}`);
@@ -67,60 +71,75 @@ async function checkRemovedBoundaries() {
   }
 }
 
-async function checkCompositeReferences() {
-  const workspaceRoots = ['apps', 'packages'];
-  const packagesByName = new Map();
-  for (const workspaceRoot of workspaceRoots) {
+async function readWorkspaceProjects() {
+  const workspacePackages = [];
+  for (const workspaceRoot of ['apps', 'packages']) {
     const directory = join(root, workspaceRoot);
     for (const entry of await readdir(directory, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
       const projectDirectory = join(directory, entry.name);
       try {
         const manifest = await readJson(join(projectDirectory, 'package.json'));
-        packagesByName.set(manifest.name, projectDirectory);
+        if (typeof manifest.name !== 'string' || manifest.name.length === 0) {
+          violations.push(
+            `workspace manifest has no package name: ${relative(root, projectDirectory)}`,
+          );
+          continue;
+        }
+        workspacePackages.push({ name: manifest.name, projectDirectory, manifest });
       } catch (error) {
         if (error?.code !== 'ENOENT') throw error;
       }
     }
   }
 
-  for (const [name, projectDirectory] of packagesByName) {
-    let manifest;
-    try {
-      manifest = await readJson(join(projectDirectory, 'package.json'));
-    } catch {
-      continue;
-    }
-    const workspaceDependencies = Object.keys(manifest.dependencies ?? {}).filter((dependency) =>
-      dependency.startsWith('@booking-engine/'),
-    );
-    if (workspaceDependencies.length === 0) continue;
-    let tsconfig;
-    try {
-      tsconfig = await readJson(join(projectDirectory, 'tsconfig.json'));
-    } catch {
-      violations.push(`${name} has workspace dependencies but no tsconfig.json`);
-      continue;
-    }
-    const references = new Set(
-      (tsconfig.references ?? []).map((reference) => resolve(projectDirectory, reference.path)),
-    );
-    for (const dependency of workspaceDependencies) {
-      const dependencyDirectory = packagesByName.get(dependency);
-      if (dependencyDirectory === undefined) {
-        violations.push(`${name} declares unknown workspace dependency ${dependency}`);
-        continue;
-      }
-      if (!references.has(resolve(dependencyDirectory))) {
-        violations.push(`${name} is missing a composite reference to ${dependency}`);
-      }
-    }
+  const packageNames = new Set(workspacePackages.map(({ name }) => name));
+  const namesByReferencePath = new Map();
+  for (const { name, projectDirectory } of workspacePackages) {
+    namesByReferencePath.set(resolve(projectDirectory), name);
+    namesByReferencePath.set(resolve(projectDirectory, 'tsconfig.json'), name);
   }
+
+  const projects = [];
+  for (const { name, projectDirectory, manifest } of workspacePackages) {
+    const dependencyAnalysis = analyzeRuntimeWorkspaceDependencies(name, manifest, packageNames);
+    violations.push(...dependencyAnalysis.violations);
+    const references = [];
+    try {
+      const tsconfig = await readJson(join(projectDirectory, 'tsconfig.json'));
+      for (const reference of tsconfig.references ?? []) {
+        if (typeof reference?.path !== 'string') {
+          violations.push(`${name} has a composite reference without a path`);
+          continue;
+        }
+        const referencePath = resolve(projectDirectory, reference.path);
+        const targetName = namesByReferencePath.get(referencePath);
+        if (targetName === undefined) {
+          violations.push(
+            `${name} has a composite reference to unknown workspace path ${relative(
+              root,
+              referencePath,
+            )}`,
+          );
+          continue;
+        }
+        references.push(targetName);
+      }
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+    }
+    projects.push({ name, dependencies: dependencyAnalysis.dependencies, references });
+  }
+  return projects;
+}
+
+async function checkWorkspaceGraph() {
+  violations.push(...validateWorkspaceGraph(await readWorkspaceProjects()));
 }
 
 await checkDatabaseBoundary();
 await checkRemovedBoundaries();
-await checkCompositeReferences();
+await checkWorkspaceGraph();
 
 if (violations.length > 0) {
   throw new Error(`Architecture boundary check failed:\n- ${violations.join('\n- ')}`);

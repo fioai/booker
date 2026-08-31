@@ -271,17 +271,10 @@ export function paymentStateTransition(
   return { ok: true, value: outcome };
 }
 
-/** Legacy-compatible aliases retained for composition boundaries. */
-export type CheckoutRequest = PaymentCheckoutRequest;
-
-export interface CheckoutSession extends PaymentCheckoutSession {
-  readonly providerSessionId: string;
-}
-
 export interface PaymentProvider {
   readonly providerName: string;
   readonly providerAccountId?: string;
-  createCheckoutSession(request: CheckoutRequest): Promise<CheckoutSession>;
+  createCheckoutSession(request: PaymentCheckoutRequest): Promise<PaymentCheckoutSession>;
   readonly verifyWebhook?: (
     rawBody: Uint8Array | string,
     signatureHeader: string,
@@ -293,7 +286,7 @@ export interface PaymentCheckoutService {
     scope: PaymentOrganizationScope,
     propertyId: string,
     requestId: string,
-  ): Promise<CheckoutSession>;
+  ): Promise<PaymentCheckoutSession>;
   handleWebhook(
     rawBody: Uint8Array | string,
     signatureHeader: string,
@@ -314,7 +307,7 @@ export function createPaymentCheckoutService(
     throw new TypeError('payment provider account is required at composition time.');
   }
   return {
-    async startCheckout(scope, propertyId, requestId): Promise<CheckoutSession> {
+    async startCheckout(scope, propertyId, requestId): Promise<PaymentCheckoutSession> {
       const prepared = await dependencies.store.prepareCheckout(scope, propertyId, requestId, {
         providerName: dependencies.provider.providerName,
         providerAccountId,

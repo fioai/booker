@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 
 import { Pool } from 'pg';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -24,6 +25,10 @@ import {
   type PostgresDatabasePort,
   type PropertyRepository,
 } from '../../packages/database-postgres/src/index.js';
+import {
+  MIGRATION_FILES,
+  runMigrationsFromDirectory,
+} from '../../packages/database-postgres/src/database/migrations.js';
 import type { PropertyConfigurationInput } from '../../packages/booking-core/src/index.js';
 
 const connectionString =
@@ -205,22 +210,193 @@ describe('PostgreSQL iCalendar blocks and availability coexistence', () => {
     expect(await store.list(scope, sourceId)).toMatchObject([{ status: 'released', sequence: 3 }]);
   });
 
-  it('persists bounded ten-digit sequence provenance without narrowing the feed contract', async () => {
+  it('persists the maximum sequence and rejects invalid reconciliation and adapter values', async () => {
     const scope: ICalScope = { organizationId: organizationAId, propertyId };
     const event = firstEvent(parseICalCalendar(await fixture('valid-airbnb.ics')));
-    const versioned = Object.freeze({
+    const maximum = Object.freeze({
       ...event,
-      uid: `${event.uid}-large-sequence`,
-      sequence: 2_147_483_648,
+      uid: `${event.uid}-maximum-sequence`,
+      sequence: 2_147_483_647,
       lastModified: '2026-07-04T12:00:00.000Z',
     });
 
-    await expect(reconcileICalFeed(scope, sourceId, [versioned], store)).resolves.toMatchObject({
+    await expect(reconcileICalFeed(scope, sourceId, [maximum], store)).resolves.toMatchObject({
       decisions: [{ action: 'created' }],
     });
     await expect(store.list(scope, sourceId)).resolves.toMatchObject([
-      { uid: versioned.uid, sequence: versioned.sequence },
+      { uid: maximum.uid, status: 'active', sequence: 2_147_483_647 },
     ]);
+
+    for (const [index, sequence] of [-1, 1.5, 2_147_483_648].entries()) {
+      const invalidEvent = Object.freeze({
+        ...event,
+        uid: `${event.uid}-invalid-sequence-${index}`,
+        sequence,
+      });
+      await expect(reconcileICalFeed(scope, sourceId, [invalidEvent], store)).rejects.toThrow(
+        'iCalendar event sequence is invalid.',
+      );
+
+      const invalidRecord: ICalBlockRecord = Object.freeze({
+        organizationId: scope.organizationId,
+        propertyId: scope.propertyId,
+        sourceId,
+        uid: invalidEvent.uid,
+        arrival: invalidEvent.arrival,
+        departure: invalidEvent.departure,
+        status: 'active',
+        eventStatus: invalidEvent.status,
+        sequence,
+        lastModified: invalidEvent.lastModified,
+        summary: invalidEvent.summary,
+      });
+      await expect(store.upsert(scope, invalidRecord)).rejects.toMatchObject({
+        name: 'PersistenceError',
+        code: 'invalid_availability_id',
+      });
+      await expect(
+        store.release(scope, sourceId, maximum.uid, {
+          sequence,
+          lastModified: maximum.lastModified,
+          summary: maximum.summary,
+        }),
+      ).rejects.toMatchObject({
+        name: 'PersistenceError',
+        code: 'invalid_availability_id',
+      });
+
+      const records = await store.list(scope, sourceId);
+      expect(records).toHaveLength(1);
+      expect(records).toMatchObject([
+        { uid: maximum.uid, status: 'active', sequence: 2_147_483_647 },
+      ]);
+    }
+  });
+
+  it('normalizes legacy sequence overflow during the 010 to 011 upgrade', async () => {
+    if (pool === undefined) {
+      throw new Error('iCalendar integration pool was not initialized.');
+    }
+
+    const upgradeSchema = `ical_sequence_upgrade_test_${runId}`;
+    const upgradeTable = (name: string): string => `"${upgradeSchema}"."${name}"`;
+    const upgradeDatabase = createPostgresDatabase({
+      connectionString,
+      schema: upgradeSchema,
+    });
+    const migrationDirectory = fileURLToPath(
+      new URL('../../packages/database-postgres/migrations/', import.meta.url),
+    );
+    const upgradeOrganizationId = `ical-upgrade-${runId}`;
+    const upgradePropertyId = `ical-upgrade-property-${runId}`;
+    const upgradeScope: ICalScope = {
+      organizationId: upgradeOrganizationId,
+      propertyId: upgradePropertyId,
+    };
+    const event = firstEvent(parseICalCalendar(await fixture('valid-airbnb.ics')));
+    const maximum = Object.freeze({
+      ...event,
+      uid: `${event.uid}-legacy-sequence-overflow`,
+      sequence: 2_147_483_647,
+      lastModified: '2026-07-05T12:00:00.000Z',
+    });
+    const insertBlock = `
+      INSERT INTO ${upgradeTable('ical_blocks')} (
+        organization_id,
+        property_id,
+        source_id,
+        external_uid,
+        arrival,
+        departure,
+        status,
+        event_status,
+        sequence,
+        last_modified,
+        summary
+      )
+      VALUES ($1, $2, $3, $4, $5::date, $6::date, 'active', $7, $8, $9::timestamptz, $10)
+    `;
+
+    try {
+      await runMigrationsFromDirectory(
+        upgradeDatabase,
+        migrationDirectory,
+        MIGRATION_FILES.slice(0, 10),
+      );
+
+      const upgradeOrganizations = createPostgresOrganizationRepository(upgradeDatabase);
+      const upgradeProperties = createPostgresPropertyRepository(upgradeDatabase);
+      await upgradeOrganizations.create({
+        id: upgradeOrganizationId,
+        name: 'iCalendar Sequence Upgrade Tenant',
+      });
+      await upgradeProperties.create(
+        { organizationId: upgradeOrganizationId },
+        makeProperty(upgradePropertyId),
+      );
+      await pool.query(insertBlock, [
+        upgradeOrganizationId,
+        upgradePropertyId,
+        sourceId,
+        maximum.uid,
+        maximum.arrival,
+        maximum.departure,
+        maximum.status,
+        2_147_483_648,
+        maximum.lastModified,
+        maximum.summary,
+      ]);
+
+      await runMigrations(upgradeDatabase);
+
+      await expect(
+        pool.query<{ sequence: string }>(
+          `
+            SELECT sequence::text AS sequence
+            FROM ${upgradeTable('ical_blocks')}
+            WHERE organization_id = $1
+              AND property_id = $2
+              AND source_id = $3
+              AND external_uid = $4
+          `,
+          [upgradeOrganizationId, upgradePropertyId, sourceId, maximum.uid],
+        ),
+      ).resolves.toMatchObject({ rows: [{ sequence: '2147483647' }] });
+
+      const upgradeStore = createPostgresICalBlockStore(upgradeDatabase);
+      await expect(upgradeStore.list(upgradeScope, sourceId)).resolves.toMatchObject([
+        { uid: maximum.uid, status: 'active', sequence: 2_147_483_647 },
+      ]);
+      await expect(
+        reconcileICalFeed(upgradeScope, sourceId, [maximum], upgradeStore),
+      ).resolves.toMatchObject({
+        decisions: [{ uid: maximum.uid, action: 'unchanged' }],
+      });
+
+      await expect(
+        pool.query(insertBlock, [
+          upgradeOrganizationId,
+          upgradePropertyId,
+          sourceId,
+          `${maximum.uid}-new-overflow`,
+          maximum.arrival,
+          maximum.departure,
+          maximum.status,
+          2_147_483_648,
+          maximum.lastModified,
+          maximum.summary,
+        ]),
+      ).rejects.toMatchObject({
+        code: '23514',
+        constraint: 'ical_blocks_sequence_bounded',
+      });
+    } finally {
+      try {
+        await upgradeDatabase.close();
+      } finally {
+        await pool.query(`DROP SCHEMA IF EXISTS "${upgradeSchema}" CASCADE`);
+      }
+    }
   });
 
   it('rejects overlapping iCal and hold writes in either creation order with safe conflict errors', async () => {

@@ -4,6 +4,10 @@
 
 Use Node.js 22.23.1 and pnpm 10.12.1. Install dependencies with the frozen lockfile:
 
+On Windows Git Bash, PowerShell, or Command Prompt, use `corepack.cmd pnpm` if the
+extensionless `corepack` shim fails. Make this substitution for the install command
+and every later pnpm command. The canonical POSIX command remains below.
+
 ```sh
 corepack pnpm install --frozen-lockfile
 ```
@@ -25,42 +29,23 @@ owns persistence and canonical projections; the API owns SDK V1 serialization.
 
 ## Local PostgreSQL integration
 
-The documented local service uses PostgreSQL through the Compose host port `15432`:
+Follow the root [Quickstart](README.md#quickstart). It gives the environment-file copy command
+for POSIX shells, Windows PowerShell, and Windows Command Prompt, then starts PostgreSQL and the
+seeded app in Compose with the same finite 120-second readiness timeout.
 
-```sh
-cp .env.example .env
-corepack pnpm install --frozen-lockfile
-docker compose up -d postgres
-corepack pnpm build
-corepack pnpm db:migrate
-corepack pnpm start
-```
-
-Set `DATABASE_URL` to the Compose host port. Integration suites create isolated schemas and
-clean them up. CI overrides the URL to its PostgreSQL service on port `5432`.
+The Compose app binds its local database connection, sample flag, and sample password in one
+service configuration. The local template disables sample data for host-started processes. The
+explicit `db:migrate` release command rejects sample data by design. Integration suites create
+isolated schemas and clean them up. CI overrides the database URL with its PostgreSQL service
+on port `5432`.
 
 ## Required checks
 
-Run the focused checks while changing a module, then the complete release gate before opening
-a pull request:
-
-```sh
-corepack pnpm format:check
-corepack pnpm lint
-corepack pnpm typecheck
-corepack pnpm test
-corepack pnpm test:integration
-corepack pnpm build
-corepack pnpm check:architecture
-corepack pnpm check:public-boundary
-corepack pnpm check:public-contract
-corepack pnpm check:sdk-package
-corepack pnpm check:env
-corepack pnpm scan:secrets
-corepack pnpm audit:dependencies
-git diff --check
-docker compose config
-```
+The root [Development and release gates](README.md#development-and-release-gates) checklist is the
+single authoritative release command list. Run focused checks while changing a module, then run
+every command in that checklist before opening a pull request. This includes the explicitly
+confirmed backup/restore rehearsal and the Docker clean-room gate. Do not maintain a second,
+partial command list here.
 
 Docker-backed checks require a running Docker engine. Do not replace them with mocked claims.
 

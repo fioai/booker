@@ -1,0 +1,1 @@
+export const ICAL_SEQUENCE_MAX = 2_147_483_647;

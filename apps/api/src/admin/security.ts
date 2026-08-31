@@ -1,7 +1,7 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 
 import type { AdminSession, AdminSessionStore } from './auth.js';
-import { AdminHttpError, type AdminHttpRequest, type AdminHttpResponse } from './contracts.js';
+import { AdminHttpError, type AdminHttpRequest } from './contracts.js';
 import { validationError } from './serialization.js';
 import { SAFE_IDENTIFIER } from './routes.js';
 export const SESSION_COOKIE = 'booking_engine_admin_session';
@@ -172,24 +172,6 @@ export function clearedCookie(name: string, secure: boolean, httpOnly: boolean):
 
 export function newCsrfToken(): string {
   return randomBytes(32).toString('base64url');
-}
-
-export function response(
-  status: number,
-  body: unknown,
-  headers?: Readonly<Record<string, string | readonly string[]>>,
-): AdminHttpResponse {
-  return {
-    status,
-    body,
-    headers: {
-      'cache-control': 'no-store',
-      'x-content-type-options': 'nosniff',
-      'x-frame-options': 'DENY',
-      'referrer-policy': 'no-referrer',
-      ...(headers ?? {}),
-    },
-  };
 }
 
 export function normalizedOrigin(value: string | undefined): string | undefined {

@@ -134,6 +134,20 @@ const MAX_IDEMPOTENCY_KEY_LENGTH = 128;
 const MAX_HOLD_DURATION_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_HOLD_DURATION_MS = 15 * 60 * 1000;
 
+function countUnicodeCodePoints(value: string, maximum = Number.POSITIVE_INFINITY): number {
+  let length = 0;
+  let offset = 0;
+  while (offset < value.length) {
+    const codePoint = value.codePointAt(offset);
+    offset += codePoint !== undefined && codePoint > 0xffff ? 2 : 1;
+    length += 1;
+    if (length > maximum) {
+      return length;
+    }
+  }
+  return length;
+}
+
 const REQUEST_COLUMNS = `
   organization_id, property_id, request_id,
   arrival::text AS arrival, departure::text AS departure,
@@ -148,8 +162,8 @@ function validateIdentifier(
 ): asserts value is string {
   if (
     typeof value !== 'string' ||
-    value.length === 0 ||
-    value.length > MAX_IDENTIFIER_LENGTH ||
+    value === '' ||
+    countUnicodeCodePoints(value, MAX_IDENTIFIER_LENGTH) > MAX_IDENTIFIER_LENGTH ||
     !IDENTIFIER_PATTERN.test(value)
   ) {
     throw new PersistenceError(code, `${code} must be a valid identifier.`);
@@ -172,17 +186,20 @@ function validateRequestId(requestId: string): string {
 }
 
 function hasControlCharacters(value: string): boolean {
-  return [...value].some((character) => {
-    const codePoint = character.codePointAt(0) ?? 0;
-    return codePoint < 32 || codePoint === 127;
-  });
+  for (let offset = 0; offset < value.length; offset += 1) {
+    const codeUnit = value.charCodeAt(offset);
+    if (codeUnit < 32 || codeUnit === 127) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function validateIdempotencyKey(value: unknown): string {
   if (
     typeof value !== 'string' ||
-    value.trim().length === 0 ||
-    value.length > MAX_IDEMPOTENCY_KEY_LENGTH ||
+    value.trim() === '' ||
+    countUnicodeCodePoints(value, MAX_IDEMPOTENCY_KEY_LENGTH) > MAX_IDEMPOTENCY_KEY_LENGTH ||
     hasControlCharacters(value)
   ) {
     throw new PersistenceError(
@@ -233,8 +250,8 @@ function validateInput(input: BookingRequestCreateInput): BookingRequestCreateIn
   }
   if (
     typeof input?.guestName !== 'string' ||
-    input.guestName.trim().length === 0 ||
-    input.guestName.length > 120 ||
+    input.guestName.trim() === '' ||
+    countUnicodeCodePoints(input.guestName, 120) > 120 ||
     hasControlCharacters(input.guestName)
   ) {
     throw new PersistenceError(
@@ -244,8 +261,8 @@ function validateInput(input: BookingRequestCreateInput): BookingRequestCreateIn
   }
   if (
     typeof input?.guestEmail !== 'string' ||
-    input.guestEmail.trim().length < 3 ||
-    input.guestEmail.length > 254 ||
+    countUnicodeCodePoints(input.guestEmail.trim(), 3) < 3 ||
+    countUnicodeCodePoints(input.guestEmail, 254) > 254 ||
     hasControlCharacters(input.guestEmail) ||
     !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(input.guestEmail)
   ) {
@@ -257,8 +274,8 @@ function validateInput(input: BookingRequestCreateInput): BookingRequestCreateIn
   if (
     input.message !== null &&
     (typeof input.message !== 'string' ||
-      input.message.trim().length === 0 ||
-      input.message.length > 2000 ||
+      input.message.trim() === '' ||
+      countUnicodeCodePoints(input.message, 2000) > 2000 ||
       hasControlCharacters(input.message))
   ) {
     throw new PersistenceError(

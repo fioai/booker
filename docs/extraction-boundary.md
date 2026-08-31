@@ -32,11 +32,16 @@ database, domain, admin, provider, and worker modules remain inside this project
 ## Local extraction repair record
 
 The source Dockerfile contained a 59-character Node image digest. Docker requires a
-64-character digest. The extracted Dockerfile uses the verified amd64 manifest digest for
-`node:22.23.1-alpine`:
+64-character digest. Both stages in the current Dockerfile use the verified multi-platform OCI
+index digest for `node:22.23.1-alpine`:
 
-`sha256:b74031e546d7f4faf561d797ac1b76beccac856a042815ca77db4fd047581605`
+`sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2`
 
-This was a local extraction repair. It was not applied to the original checkout. No remote,
+Docker Hub registry metadata identifies that digest as the index for Linux `amd64`, `arm/v6`,
+`arm/v7`, `arm64/v8`, and `s390x` images. Docker selects the matching platform manifest from
+the pinned index. This replaces the earlier local repair that pinned only the `amd64` manifest
+and preserves the same Node tag.
+
+The malformed source digest was repaired only in this repository. No remote,
 push, deployment, credential change, or production-provider change was performed during the
 historical extraction.

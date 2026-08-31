@@ -38,8 +38,6 @@ export interface BookingOutboxDeliveryPort {
   deliver(event: BookingOutboxDeliveryEvent): Promise<void>;
 }
 
-export type OutboxDeliveryPort = BookingOutboxDeliveryPort;
-
 export interface BookingOutboxRepositoryOptions {
   readonly clock?: () => Date;
   readonly maxAttempts?: number;

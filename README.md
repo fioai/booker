@@ -45,27 +45,55 @@ See [`docs/architecture.md`](docs/architecture.md),
 
 - Node.js `22.23.1`;
 - pnpm `10.12.1` through Corepack;
-- Docker Engine and Compose for PostgreSQL-backed checks.
-
-Linux, macOS, and Windows users can run the same commands from a shell with Docker Compose
-available.
+- Docker Engine and Compose for the quickstart and PostgreSQL-backed checks.
 
 ## Quickstart
 
+Create the ignored local environment file with the command for your shell.
+
+Linux, macOS, or a POSIX shell such as Windows Git Bash:
+
 ```sh
 cp .env.example .env
-corepack pnpm install --frozen-lockfile
-docker compose up -d postgres
-corepack pnpm build
-corepack pnpm db:migrate
-corepack pnpm start
 ```
 
-The local Compose PostgreSQL host port is `15432`; the app listens on `HOST`/`PORT` from the
-environment template. `scripts/run-api.mjs` keeps its current idempotent migration-on-start
-behavior. `scripts/migrate.mjs` remains the explicit migration command for release rehearsals.
+Windows PowerShell:
 
-Public and admin smoke examples:
+```powershell
+Copy-Item .env.example .env
+```
+
+Windows Command Prompt:
+
+```bat
+copy .env.example .env
+```
+
+On Windows Git Bash, PowerShell, or Command Prompt, use `corepack.cmd pnpm` if the
+extensionless `corepack` shim fails. Replace `corepack pnpm` with `corepack.cmd pnpm`
+for the install command and every later pnpm command.
+
+Install the frozen dependencies, then start the seeded app and its services in Compose:
+
+```text
+corepack pnpm install --frozen-lockfile
+docker compose up --build --detach --wait --wait-timeout 120
+```
+
+Compose waits for at most 120 seconds for PostgreSQL and the app to pass their health checks. A
+timeout or unhealthy service makes the command fail; stop the Quickstart and inspect the service
+logs instead of continuing to smoke checks. The Compose app sets its database URL to the Compose
+PostgreSQL service and fixes the local environment, sample flag, and sample password in the same
+service configuration. The copied template keeps sample seeding disabled for host-started
+processes.
+
+The start, migration, database-check, backup/restore, and integration-test commands load the
+complete optional `.env` file only when no deployment identity variable is exported. If any
+deployment identity variable is exported, the commands ignore `.env` and use only the process
+environment. Supply a complete process environment; the commands do not merge deployment
+identity values from both sources.
+
+After the readiness command completes, run the public and admin smoke examples:
 
 ```sh
 curl http://127.0.0.1:13000/healthz
@@ -73,13 +101,16 @@ curl http://127.0.0.1:13000/v1/properties/sample-bungalow
 curl http://127.0.0.1:13000/admin/login
 ```
 
-The owner admin is same-origin and server-rendered by `apps/api`. It is a reference surface,
-not a browser-admin SDK.
+On Windows PowerShell or Command Prompt, use `curl.exe` in place of `curl`. The owner admin is
+same-origin and server-rendered by `apps/api`. It is a reference surface, not a browser-admin
+SDK. For an unseeded API process running on the host, use the
+[host development flow](docs/deployment/self-host.md#host-development-flow).
 
 ## Development and release gates
 
-The CI workflow and root scripts are authoritative. Dated verification notes under `docs/` are
-supporting evidence only.
+The checklist below is the authoritative release command list. The CI workflow and root scripts
+define command behavior. Dated verification notes under `docs/` are supporting evidence only.
+Run every command from the repository root:
 
 ```sh
 corepack pnpm format:check
@@ -87,6 +118,7 @@ corepack pnpm lint
 corepack pnpm typecheck
 corepack pnpm test
 corepack pnpm test:integration
+corepack pnpm backup:restore -- --confirm-database replace_me_local_database
 corepack pnpm build
 corepack pnpm check:architecture
 corepack pnpm check:public-boundary
@@ -95,15 +127,23 @@ corepack pnpm check:sdk-package
 corepack pnpm check:env
 corepack pnpm scan:secrets
 corepack pnpm audit:dependencies
+git diff --check main...HEAD
+git diff --cached --check
 git diff --check
-docker compose config
-```
-
-When Docker is available, also run:
-
-```sh
+docker compose config --quiet
 corepack pnpm docker:clean-room
 ```
+
+For `backup:restore`, replace `replace_me_local_database` with the exact database name decoded
+from the effective `DATABASE_URL`. The explicit confirmation must match that decoded name. Retain
+the successful backup/restore rehearsal result with the release evidence.
+
+The `main...HEAD` diff checks committed branch changes from the merge base with `main`.
+The `--cached` diff checks staged changes. The plain diff checks unstaged changes.
+
+The Docker clean-room gate is mandatory for every release. It verifies Docker packaging, startup,
+smoke, and backup/restore behavior. A running Docker Engine is required. If Docker Engine is
+unavailable, the release is blocked; mocked evidence does not replace the gate.
 
 Integration tests use isolated schemas. CI supplies a PostgreSQL service URL on port `5432`;
 the documented local Compose flow uses host port `15432`.

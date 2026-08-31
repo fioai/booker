@@ -92,6 +92,8 @@ const SAFE_ICAL_ERRORS: Readonly<Record<string, string>> = Object.freeze({
   invalid_timestamp: 'The calendar source returned an invalid event timestamp.',
   invalid_status: 'The calendar source returned an unsupported event status.',
   text_too_long: 'The calendar source returned oversized event text.',
+  invalid_transparency: 'The calendar source returned unsupported event transparency.',
+  unsupported_recurrence: 'The calendar source contained unsupported recurrence data.',
   availability_conflict: 'The calendar source could not update availability.',
   sync_failed: 'Calendar synchronization failed.',
 });
