@@ -3,25 +3,24 @@ export {
   type PostgresConfig,
   type PostgresDatabasePort,
   type PostgresTransactionPort,
-} from './postgres-database.js';
-export { runMigrations } from './migrations.js';
+} from './database/postgres.js';
+export { MigrationDriftError, runMigrations } from './database/migrations.js';
 export {
-  createOrganizationRepository,
+  createPostgresOrganizationRepository,
   PostgresOrganizationRepository,
   ORGANIZATION_NAME_MAX_LENGTH,
   type Organization,
   type OrganizationInput,
   type OrganizationRepository,
-} from './organization-repository.js';
+} from './organization/repository.js';
 export {
   createPostgresPropertyRepository,
   PostgresPropertyRepository,
   type OrganizationScope,
   type PropertyRepository,
-} from './property-repository.js';
-export { PersistenceError, type PersistenceErrorCode } from './persistence-errors.js';
+} from './property/repository.js';
+export { PersistenceError, type PersistenceErrorCode } from './database/errors.js';
 export {
-  createOwnerCredentialRepository,
   createPostgresOwnerCredentialRepository,
   PostgresOwnerCredentialRepository,
   type OwnerCredentialRecord,
@@ -29,7 +28,6 @@ export {
   type OwnerRole,
 } from './owner/auth-repository.js';
 export {
-  createAvailabilityRepository,
   createPostgresAvailabilityRepository,
   PostgresAvailabilityRepository,
   type AvailabilityOrganizationScope,
@@ -40,14 +38,13 @@ export {
   type ConfirmedOccupancyInput,
   type HoldInput,
   type ManualBlockInput,
-} from './availability-repository.js';
+} from './availability/repository.js';
 export {
   createPostgresRateRepository,
-  createRateRepository,
   PostgresRateRepository,
   type RateOrganizationScope,
   type RateRepository,
-} from './rate-repository.js';
+} from './rates/repository.js';
 export {
   createPostgresBookingRequestRepository,
   PostgresBookingRequestRepository,
@@ -71,21 +68,9 @@ export {
   type BookingOutboxRepository,
   type BookingOutboxStatus,
   type OutboxDeliveryErrorCode,
-  type OutboxDeliveryPort,
 } from './booking/outbox-repository.js';
+export { createPostgresICalBlockStore, PostgresICalBlockStore } from './ical/block-repository.js';
 export {
-  createICalBlockStore,
-  createPostgresICalBlockStore,
-  PostgresICalBlockStore,
-} from './ical/block-repository.js';
-export type {
-  ICalBlockRecord,
-  ICalBlockStore,
-  ICalReleaseProvenance,
-  ICalScope,
-} from '@booking-engine/channel-ical';
-export {
-  createPaymentCheckoutRepository,
   createPostgresPaymentCheckoutRepository,
   PostgresPaymentCheckoutRepository,
   type PaymentCheckoutPreparation,

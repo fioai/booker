@@ -1,3 +1,8 @@
+> **Archived verification record:** Historical evidence only. Use the single authoritative
+> [README release checklist](../README.md#development-and-release-gates). The CI workflow and root
+> scripts implement its checks; they do not define a second command list. This dated record is not
+> a release checklist.
+
 # Availability and rates verification
 
 Date: 2026-07-12
@@ -116,16 +121,16 @@ test passed all 100 iterations.
 All commands ran from this isolated worktree. No commit, push, deploy, or production
 database change was performed.
 
-| Command                                       | Result                                                  |
-| --------------------------------------------- | ------------------------------------------------------- |
-| `corepack.cmd pnpm install --frozen-lockfile` | exit `0`; lockfile up to date; pnpm `10.12.1`           |
-| `corepack.cmd pnpm format:check`              | exit `0`; all files matched Prettier                    |
-| `corepack.cmd pnpm lint`                      | exit `0`; zero warnings with `--max-warnings=0`         |
-| `corepack.cmd pnpm typecheck`                 | exit `0`; project and test TypeScript checks passed     |
-| `corepack.cmd pnpm test`                      | exit `0`; 4 package files, 46 tests passed              |
-| `corepack.cmd pnpm test:integration`          | exit `0`; 2 PostgreSQL files, 12 tests passed           |
-| `corepack.cmd pnpm test:e2e`                  | exit `0`; no E2E test files found                       |
-| `corepack.cmd pnpm check:public-boundary`     | exit `0`; public boundary passed with 1 SDK source file |
-| `corepack.cmd pnpm build`                     | exit `0`                                                |
-| `docker compose config`                       | exit `0`; PostgreSQL 16 and Mailpit rendered            |
-| `git diff --check`                            | exit `0`; only expected Windows LF-to-CRLF warnings     |
+| Command                                       | Result                                                                          |
+| --------------------------------------------- | ------------------------------------------------------------------------------- |
+| `corepack.cmd pnpm install --frozen-lockfile` | exit `0`; lockfile up to date; pnpm `10.12.1`                                   |
+| `corepack.cmd pnpm format:check`              | exit `0`; all files matched Prettier                                            |
+| `corepack.cmd pnpm lint`                      | exit `0`; zero warnings with `--max-warnings=0`                                 |
+| `corepack.cmd pnpm typecheck`                 | exit `0`; project and test TypeScript checks passed                             |
+| `corepack.cmd pnpm test`                      | exit `0`; 4 package files, 46 tests passed                                      |
+| `corepack.cmd pnpm test:integration`          | exit `0`; 2 PostgreSQL files, 12 tests passed                                   |
+| Browser verification (historical)             | No repository E2E script exists; verify the actual deployed surface separately. |
+| `corepack.cmd pnpm check:public-boundary`     | exit `0`; public boundary passed with 1 SDK source file                         |
+| `corepack.cmd pnpm build`                     | exit `0`                                                                        |
+| `docker compose config`                       | exit `0`; PostgreSQL 16 and Mailpit rendered                                    |
+| `git diff --check`                            | exit `0`; only expected Windows LF-to-CRLF warnings                             |

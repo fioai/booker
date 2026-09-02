@@ -1,296 +1,42 @@
 import { randomUUID } from 'node:crypto';
 
+import type { BookingRequestCreateInput } from '@booking-engine/database-postgres';
 import type {
-  AvailabilityRepository,
-  BookingRequestCreateInput,
-  BookingRequestRecord,
-  BookingRequestRepository,
-  OrganizationScope,
-  PropertyRepository,
-  RateRepository,
-} from '@booking-engine/database-postgres';
-import type { QuoteBreakdown, PropertyConfiguration } from '@booking-engine/booking-core';
-import type {
-  PublicApiErrorCodeV1,
-  PublicApiErrorResponseV1,
   PublicAvailabilityV1,
   PublicPropertyV1,
   PublicQuoteV1,
   PublicRequestToBookV1,
-  PublicStayV1,
-  PublicValidationCodeV1,
-  PublicValidationIssueV1,
 } from '@booking-engine/sdk-typescript';
-import { PUBLIC_BOOKING_PATHS_V1 } from '@booking-engine/sdk-typescript';
 import {
-  validatePublicPropertyIdV1,
-  validatePublicIdempotencyKeyV1,
   validatePublicRequestToBookV1,
   validatePublicStayV1,
 } from '@booking-engine/sdk-typescript';
 
-export type PublicBookingScope = OrganizationScope;
-
-export type PublicBookingRequestRepository = Pick<BookingRequestRepository, 'submit'>;
-
-export interface PublicBookingApiDependencies {
-  readonly properties: Pick<PropertyRepository, 'findPublicById'>;
-  readonly availability: Pick<AvailabilityRepository, 'isAvailable'>;
-  readonly rates: Pick<RateRepository, 'quote'>;
-  readonly bookingRequests: PublicBookingRequestRepository;
-}
-
-export interface PublicHttpRequest {
-  readonly method: string;
-  readonly path: string;
-  readonly headers?: Readonly<Record<string, string>>;
-  readonly body?: unknown;
-}
-
-export interface PublicHttpResponse {
-  readonly status: number;
-  readonly body: unknown;
-}
-
-export class PublicBookingApiError extends Error {
-  readonly status: number;
-  readonly code: PublicApiErrorCodeV1;
-  readonly details: readonly PublicValidationIssueV1[] | undefined;
-
-  constructor(
-    status: number,
-    code: PublicApiErrorCodeV1,
-    message: string,
-    details?: readonly PublicValidationIssueV1[],
-  ) {
-    super(message);
-    this.name = 'PublicBookingApiError';
-    this.status = status;
-    this.code = code;
-    this.details = details;
-  }
-
-  response(): PublicApiErrorResponseV1 {
-    return {
-      error: {
-        code: this.code,
-        message: this.message,
-        ...(this.details === undefined ? {} : { details: this.details }),
-      },
-    };
-  }
-}
-
-export const PublicApiErrorV1 = PublicBookingApiError;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-function isPersistenceError(value: unknown): value is {
-  readonly code: string;
-  readonly errors?: readonly {
-    readonly field: string;
-    readonly code: string;
-    readonly message: string;
-  }[];
-} {
-  return isRecord(value) && typeof value['code'] === 'string';
-}
-
-function publicValidationCode(code: string): PublicValidationCodeV1 {
-  const knownCodes: readonly PublicValidationCodeV1[] = [
-    'invalid_input',
-    'missing_field',
-    'invalid_string',
-    'empty_string',
-    'string_too_long',
-    'invalid_identifier',
-    'invalid_date',
-    'non_positive_length',
-    'interval_too_long',
-    'invalid_guest_count',
-    'invalid_email',
-    'invalid_value',
-    'unknown_field',
-  ];
-  return knownCodes.includes(code as PublicValidationCodeV1)
-    ? (code as PublicValidationCodeV1)
-    : 'invalid_value';
-}
-
-function validationDetails(
-  errors:
-    | readonly { readonly field: string; readonly code: string; readonly message: string }[]
-    | undefined,
-): readonly PublicValidationIssueV1[] | undefined {
-  if (errors === undefined) {
-    return undefined;
-  }
-  return errors.map(({ field, code, message }) => ({
-    field,
-    code: publicValidationCode(code),
-    message,
-  }));
-}
-
-function mapPersistenceError(error: unknown): PublicBookingApiError {
-  if (!isPersistenceError(error)) {
-    return new PublicBookingApiError(
-      500,
-      'internal_error',
-      'The public API could not complete the request.',
-    );
-  }
-  switch (error.code) {
-    case 'property_not_found':
-      return new PublicBookingApiError(404, 'property_not_found', 'Property was not found.');
-    case 'rate_plan_not_found':
-      return new PublicBookingApiError(
-        404,
-        'quote_unavailable',
-        'A quote is not available for this property.',
-      );
-    case 'invalid_stay':
-    case 'rate_validation':
-    case 'booking_request_validation':
-      return new PublicBookingApiError(
-        400,
-        'validation_failed',
-        'Request validation failed.',
-        validationDetails(error.errors),
-      );
-    case 'availability_conflict':
-      return new PublicBookingApiError(
-        409,
-        'stay_unavailable',
-        'The requested stay is not available.',
-      );
-    case 'duplicate_booking_request':
-    case 'idempotency_key_reuse':
-      return new PublicBookingApiError(
-        409,
-        'request_conflict',
-        'The booking request could not be accepted.',
-      );
-    case 'invalid_organization_id':
-    case 'invalid_property_id':
-      return new PublicBookingApiError(404, 'property_not_found', 'Property was not found.');
-    default:
-      return new PublicBookingApiError(
-        500,
-        'internal_error',
-        'The public API could not complete the request.',
-      );
-  }
-}
-
-function throwValidation(result: {
-  readonly ok: false;
-  readonly errors: readonly PublicValidationIssueV1[];
-}): never {
-  throw new PublicBookingApiError(
-    400,
-    'validation_failed',
-    'Request validation failed.',
-    result.errors,
-  );
-}
-
-function requirePropertyId(propertyId: string): string {
-  const result = validatePublicPropertyIdV1(propertyId);
-  if (!result.ok) {
-    throwValidation(result);
-  }
-  return result.value;
-}
-
-function idempotencyKeyHeader(
-  headers: Readonly<Record<string, string>> | undefined,
-): string | undefined {
-  if (headers === undefined) {
-    return undefined;
-  }
-  const entry = Object.entries(headers).find(([name]) => name.toLowerCase() === 'idempotency-key');
-  return entry?.[1];
-}
-
-function publicProperty(property: PublicPropertyV1): PublicPropertyV1 {
-  return Object.freeze({
-    id: property.id,
-    name: property.name,
-    summary: property.summary,
-    country: property.country,
-    timezone: property.timezone,
-    currency: property.currency,
-    propertyType: property.propertyType,
-    bedroomCount: property.bedroomCount,
-    bedConfiguration: Object.freeze(
-      property.bedConfiguration.map((bed) =>
-        Object.freeze({ type: bed.type, quantity: bed.quantity }),
-      ),
-    ),
-    bathroomCount: property.bathroomCount,
-    maximumGuests: property.maximumGuests,
-    amenities: Object.freeze([...property.amenities]),
-    hostNotes: property.hostNotes,
-  });
-}
-
-export function serializePublicPropertyResponse(
-  property: PublicPropertyV1 | PropertyConfiguration,
-): PublicPropertyV1 {
-  return publicProperty(property);
-}
-
-export function serializePublicAvailability(
-  propertyId: string,
-  stay: PublicStayV1,
-  available: boolean,
-): PublicAvailabilityV1 {
-  return Object.freeze({
-    propertyId,
-    arrival: stay.arrival,
-    departure: stay.departure,
-    nights: stay.nights,
-    available,
-  });
-}
-
-export function serializePublicQuote(propertyId: string, quote: QuoteBreakdown): PublicQuoteV1 {
-  return Object.freeze({
-    propertyId,
-    arrival: quote.arrival,
-    departure: quote.departure,
-    nights: quote.nights,
-    currency: quote.currency,
-    nightly: Object.freeze(
-      quote.nightly.map((night) =>
-        Object.freeze({ date: night.date, amountMinor: night.amountMinor, source: night.source }),
-      ),
-    ),
-    nightlySubtotalMinor: quote.nightlySubtotalMinor,
-    cleaningFeeMinor: quote.cleaningFeeMinor,
-    totalMinor: quote.totalMinor,
-    minimumStayNights: quote.minimumStayNights,
-  });
-}
-
-export function serializePublicBookingRequest(
-  request: BookingRequestRecord,
-): PublicRequestToBookV1 {
-  return Object.freeze({
-    id: request.id,
-    propertyId: request.propertyId,
-    arrival: request.arrival,
-    departure: request.departure,
-    nights: request.quote.nights,
-    guestCount: request.guestCount,
-    status: request.status,
-    quote: serializePublicQuote(request.propertyId, request.quote),
-    createdAt: request.createdAt,
-  });
-}
+import { serializePublicProperty } from '../../property/configuration/mapper.js';
+import {
+  PublicApiErrorV1,
+  PublicBookingApiError,
+  type PublicBookingApi,
+  type PublicBookingApiDependencies,
+  type PublicBookingHttpApi,
+  type PublicBookingRequestRepository,
+  type PublicBookingScope,
+  type PublicHttpRequest,
+  type PublicHttpResponse,
+} from './contracts.js';
+import {
+  errorResponse,
+  mapPersistenceError,
+  requireIdempotencyKey,
+  requirePropertyId,
+  throwValidation,
+} from './errors.js';
+import { idempotencyKeyHeader, parsePublicBookingRoute } from './routes.js';
+import {
+  serializePublicAvailability,
+  serializePublicBookingRequest,
+  serializePublicQuote,
+} from './serialization.js';
 
 function ensureProperty(
   dependencies: PublicBookingApiDependencies,
@@ -303,7 +49,7 @@ function ensureProperty(
       if (property === null) {
         throw new PublicBookingApiError(404, 'property_not_found', 'Property was not found.');
       }
-      return publicProperty(property);
+      return serializePublicProperty(property);
     })
     .catch((error: unknown) => {
       if (error instanceof PublicBookingApiError) {
@@ -311,22 +57,6 @@ function ensureProperty(
       }
       throw mapPersistenceError(error);
     });
-}
-
-export interface PublicBookingApi {
-  getProperty(scope: PublicBookingScope, propertyId: string): Promise<PublicPropertyV1>;
-  getAvailability(
-    scope: PublicBookingScope,
-    propertyId: string,
-    input: unknown,
-  ): Promise<PublicAvailabilityV1>;
-  getQuote(scope: PublicBookingScope, propertyId: string, input: unknown): Promise<PublicQuoteV1>;
-  requestToBook(
-    scope: PublicBookingScope,
-    propertyId: string,
-    input: unknown,
-    idempotencyKey?: string,
-  ): Promise<PublicRequestToBookV1>;
 }
 
 export function createPublicBookingApi(
@@ -381,23 +111,7 @@ export function createPublicBookingApi(
       if (!request.ok) {
         throwValidation(request);
       }
-      if (idempotencyKey === undefined) {
-        throwValidation({
-          ok: false,
-          errors: [
-            {
-              field: 'idempotencyKey',
-              code: 'missing_field',
-              message: 'idempotencyKey is required for request-to-book.',
-            },
-          ],
-        });
-      }
-      const keyResult = validatePublicIdempotencyKeyV1(idempotencyKey);
-      if (!keyResult.ok) {
-        throwValidation(keyResult);
-      }
-      const validatedIdempotencyKey = keyResult.value;
+      const validatedIdempotencyKey = requireIdempotencyKey(idempotencyKey);
       const property = await ensureProperty(dependencies, scope, id);
       if (request.value.guestCount > property.maximumGuests) {
         throw new PublicBookingApiError(400, 'validation_failed', 'Request validation failed.', [
@@ -438,74 +152,13 @@ export function createPublicBookingApi(
   };
 }
 
-function routeParts(path: string):
-  | {
-      readonly resource: 'property' | 'availability' | 'quote' | 'requestToBook';
-      readonly propertyId: string;
-      readonly url: URL;
-    }
-  | undefined {
-  let url: URL;
-  try {
-    url = new URL(path, 'https://booking-engine.invalid');
-  } catch {
-    return undefined;
-  }
-  const parts = url.pathname.split('/').filter((part) => part.length > 0);
-  if (parts.length < 3 || parts[0] !== 'v1' || parts[1] !== 'properties') {
-    return undefined;
-  }
-  let propertyId: string;
-  try {
-    propertyId = decodeURIComponent(parts[2] as string);
-  } catch {
-    return undefined;
-  }
-  const encodedPropertyId = encodeURIComponent(propertyId);
-  const paths = {
-    property: PUBLIC_BOOKING_PATHS_V1.property.replace('{propertyId}', encodedPropertyId),
-    availability: PUBLIC_BOOKING_PATHS_V1.availability.replace('{propertyId}', encodedPropertyId),
-    quote: PUBLIC_BOOKING_PATHS_V1.quote.replace('{propertyId}', encodedPropertyId),
-    requestToBook: PUBLIC_BOOKING_PATHS_V1.requestToBook.replace('{propertyId}', encodedPropertyId),
-  };
-  if (url.pathname === paths.property) {
-    return { resource: 'property', propertyId, url };
-  }
-  if (url.pathname === paths.availability) {
-    return { resource: 'availability', propertyId, url };
-  }
-  if (url.pathname === paths.quote) {
-    return { resource: 'quote', propertyId, url };
-  }
-  if (url.pathname === paths.requestToBook) {
-    return { resource: 'requestToBook', propertyId, url };
-  }
-  return undefined;
-}
-
-function errorResponse(error: unknown): PublicHttpResponse {
-  if (error instanceof PublicBookingApiError) {
-    return { status: error.status, body: error.response() };
-  }
-  return {
-    status: 500,
-    body: {
-      error: { code: 'internal_error', message: 'The public API could not complete the request.' },
-    } satisfies PublicApiErrorResponseV1,
-  };
-}
-
-export interface PublicBookingHttpApi {
-  handle(scope: PublicBookingScope, request: PublicHttpRequest): Promise<PublicHttpResponse>;
-}
-
 export function createPublicBookingHttpApi(
   dependencies: PublicBookingApiDependencies,
 ): PublicBookingHttpApi {
   const api = createPublicBookingApi(dependencies);
   return {
-    async handle(scope, request): Promise<PublicHttpResponse> {
-      const route = routeParts(request.path);
+    async handle(scope, request: PublicHttpRequest): Promise<PublicHttpResponse> {
+      const route = parsePublicBookingRoute(request.path);
       if (route === undefined) {
         return errorResponse(
           new PublicBookingApiError(404, 'route_not_found', 'Public route was not found.'),
@@ -563,3 +216,20 @@ export function createPublicBookingHttpApi(
     },
   };
 }
+
+export {
+  PublicApiErrorV1,
+  PublicBookingApiError,
+  serializePublicAvailability,
+  serializePublicBookingRequest,
+  serializePublicQuote,
+};
+export type {
+  PublicBookingApi,
+  PublicBookingApiDependencies,
+  PublicBookingHttpApi,
+  PublicBookingRequestRepository,
+  PublicBookingScope,
+  PublicHttpRequest,
+  PublicHttpResponse,
+};

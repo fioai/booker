@@ -6,12 +6,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sampleBungalowFixture } from '../../packages/booking-core/test/property/fixtures.js';
 import type { MoneyMinor, PaymentWebhookEvent } from '../../packages/payments/src/index.js';
 import {
-  createOrganizationRepository,
+  createPostgresOrganizationRepository,
   createPostgresBookingRequestRepository,
   createPostgresDatabase,
   createPostgresPaymentCheckoutRepository,
   createPostgresPropertyRepository,
-  createRateRepository,
+  createPostgresRateRepository,
   runMigrations,
   type PaymentCheckoutRepository,
   type PostgresDatabasePort,
@@ -19,7 +19,7 @@ import {
 
 const connectionString =
   process.env['DATABASE_URL'] ??
-  'postgresql://booking_engine_local:local-only-placeholder@127.0.0.1:5432/booking_engine_local';
+  'postgresql://booking_engine_local:local-only-placeholder@127.0.0.1:15432/booking_engine_local';
 const runId = randomUUID().replaceAll('-', '').slice(0, 12);
 const integrationSchema = `payment_test_${runId}`;
 const table = (name: string): string => `"${integrationSchema}"."${name}"`;
@@ -47,9 +47,9 @@ async function seedAttachedCheckout(
   const propertyId = `property-${label}-${runId}`;
   const requestId = `request-${label}-${runId}`;
   const scope = { organizationId };
-  const organizations = createOrganizationRepository(database);
+  const organizations = createPostgresOrganizationRepository(database);
   const properties = createPostgresPropertyRepository(database);
-  const rates = createRateRepository(database);
+  const rates = createPostgresRateRepository(database);
   const requests = createPostgresBookingRequestRepository(database, {
     clock: () => new Date('2026-08-01T00:00:00.000Z'),
   });
@@ -155,9 +155,9 @@ describe('payment checkout persistence against real PostgreSQL', () => {
     const propertyId = `property-${runId}`;
     const requestId = `request-${runId}`;
     const scope = { organizationId };
-    const organizations = createOrganizationRepository(db);
+    const organizations = createPostgresOrganizationRepository(db);
     const properties = createPostgresPropertyRepository(db);
-    const rates = createRateRepository(db);
+    const rates = createPostgresRateRepository(db);
     const requests = createPostgresBookingRequestRepository(db, {
       clock: () => new Date('2026-08-01T00:00:00.000Z'),
     });
@@ -233,9 +233,9 @@ describe('payment checkout persistence against real PostgreSQL', () => {
     const propertyId = `property-attach-${runId}`;
     const requestId = `request-attach-${runId}`;
     const scope = { organizationId };
-    const organizations = createOrganizationRepository(db);
+    const organizations = createPostgresOrganizationRepository(db);
     const properties = createPostgresPropertyRepository(db);
-    const rates = createRateRepository(db);
+    const rates = createPostgresRateRepository(db);
     const requests = createPostgresBookingRequestRepository(db, {
       clock: () => new Date('2026-08-01T00:00:00.000Z'),
     });
@@ -312,9 +312,9 @@ describe('payment checkout persistence against real PostgreSQL', () => {
     const propertyId = `property-event-${runId}`;
     const requestId = `request-event-${runId}`;
     const scope = { organizationId };
-    const organizations = createOrganizationRepository(db);
+    const organizations = createPostgresOrganizationRepository(db);
     const properties = createPostgresPropertyRepository(db);
-    const rates = createRateRepository(db);
+    const rates = createPostgresRateRepository(db);
     const requests = createPostgresBookingRequestRepository(db, {
       clock: () => new Date('2026-08-01T00:00:00.000Z'),
     });

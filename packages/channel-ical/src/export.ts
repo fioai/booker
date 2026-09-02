@@ -108,8 +108,68 @@ function formatDate(value: string, field: string): string {
 }
 
 function formatTimestamp(value: string | Date | undefined): string {
-  const date =
-    value === undefined ? new Date(0) : value instanceof Date ? new Date(value) : new Date(value);
+  let date: Date;
+  if (typeof value === 'string') {
+    const match =
+      /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-](\d{2}):?(\d{2}))$/u.exec(
+        value,
+      );
+    if (match === null) {
+      throw new TypeError(
+        'updatedAt string must be a valid timestamp with an explicit UTC or numeric offset.',
+      );
+    }
+    const [
+      ,
+      yearText,
+      monthText,
+      dayText,
+      hourText,
+      minuteText,
+      secondText,
+      fractionText,
+      offsetText,
+      offsetHourText,
+      offsetMinuteText,
+    ] = match;
+    if (
+      yearText === undefined ||
+      monthText === undefined ||
+      dayText === undefined ||
+      hourText === undefined ||
+      minuteText === undefined ||
+      secondText === undefined ||
+      offsetText === undefined
+    ) {
+      throw new TypeError('updatedAt must be a valid timestamp.');
+    }
+    const hour = Number(hourText);
+    const minute = Number(minuteText);
+    const second = Number(secondText);
+    const offsetHour = offsetHourText === undefined ? 0 : Number(offsetHourText);
+    const offsetMinute = offsetMinuteText === undefined ? 0 : Number(offsetMinuteText);
+    if (
+      !validDate(`${yearText}-${monthText}-${dayText}`) ||
+      hour > 23 ||
+      minute > 59 ||
+      second > 59 ||
+      offsetHour > 23 ||
+      offsetMinute > 59
+    ) {
+      throw new TypeError('updatedAt must be a valid timestamp.');
+    }
+    const fraction =
+      fractionText === undefined ? '' : `.${fractionText.slice(0, 3).padEnd(3, '0')}`;
+    const offset =
+      offsetText === 'Z' || offsetText.includes(':')
+        ? offsetText
+        : `${offsetText.slice(0, 3)}:${offsetText.slice(3)}`;
+    date = new Date(
+      `${yearText}-${monthText}-${dayText}T${hourText}:${minuteText}:${secondText}${fraction}${offset}`,
+    );
+  } else {
+    date = value === undefined ? new Date(0) : new Date(value);
+  }
   if (Number.isNaN(date.getTime()) || date.getUTCFullYear() < 1 || date.getUTCFullYear() > 9999) {
     throw new TypeError('updatedAt must be a valid timestamp.');
   }
@@ -212,6 +272,3 @@ export function exportICalCalendar(input: ICalExportInput): string {
   lines.push('END:VCALENDAR');
   return `${lines.flatMap(foldLine).join('\r\n')}\r\n`;
 }
-
-export const serializeICalCalendar = exportICalCalendar;
-export const exportICal = exportICalCalendar;

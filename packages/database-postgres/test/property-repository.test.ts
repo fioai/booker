@@ -2,7 +2,7 @@ import type { QueryResult, QueryResultRow } from 'pg';
 import { describe, expect, it } from 'vitest';
 
 import { createPostgresPropertyRepository } from '../src/index.js';
-import type { PostgresDatabasePort } from '../src/postgres-database.js';
+import type { PostgresDatabasePort } from '../src/database/postgres.js';
 
 const validPublicRow = {
   id: 'property-1',

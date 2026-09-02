@@ -5,9 +5,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PaymentCheckoutService } from '@booking-engine/payments';
 
 import {
-  createPublicBookingHttpServer,
+  createApiHttpServer,
   type PublicBookingApiDependencies,
-  type PublicBookingHttpServer,
+  type ApiHttpServer,
 } from '../../../src/index.js';
 
 const publicDependencies: PublicBookingApiDependencies = {
@@ -26,7 +26,7 @@ const publicDependencies: PublicBookingApiDependencies = {
 };
 
 describe('payment webhook through the real HTTP server', () => {
-  let server: PublicBookingHttpServer | undefined;
+  let server: ApiHttpServer | undefined;
 
   afterEach(async () => {
     await server?.close();
@@ -44,7 +44,7 @@ describe('payment webhook through the real HTTP server', () => {
       }),
       handleWebhook,
     };
-    server = createPublicBookingHttpServer(publicDependencies, {
+    server = createApiHttpServer(publicDependencies, {
       scope: { organizationId: 'org-a' },
       payments,
     });
@@ -94,7 +94,7 @@ describe('payment webhook through the real HTTP server', () => {
       startCheckout,
       handleWebhook: vi.fn(async () => ({ status: 'processed' as const, payment: null })),
     };
-    server = createPublicBookingHttpServer(publicDependencies, {
+    server = createApiHttpServer(publicDependencies, {
       scope: { organizationId: 'org-composed' },
       payments,
     });

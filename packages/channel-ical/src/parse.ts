@@ -1,4 +1,5 @@
 import { TextDecoder, TextEncoder } from 'node:util';
+import { ICAL_SEQUENCE_MAX } from './protocol-limits.js';
 
 export const ICAL_PARSE_LIMITS = Object.freeze({
   maxBytes: 1_000_000,
@@ -29,6 +30,8 @@ export type ICalParseErrorCode =
   | 'invalid_sequence'
   | 'invalid_timestamp'
   | 'invalid_status'
+  | 'invalid_transparency'
+  | 'unsupported_recurrence'
   | 'text_too_long';
 
 export class ICalParseError extends Error {
@@ -78,6 +81,25 @@ interface RawEvent {
   readonly line: number;
 }
 
+const UNIQUE_EVENT_PROPERTIES: Readonly<Record<string, true>> = Object.freeze({
+  UID: true,
+  DTSTART: true,
+  DTEND: true,
+  STATUS: true,
+  TRANSP: true,
+  SEQUENCE: true,
+  'LAST-MODIFIED': true,
+  SUMMARY: true,
+});
+
+const RECURRENCE_PROPERTIES: Readonly<Record<string, true>> = Object.freeze({
+  RRULE: true,
+  RDATE: true,
+  EXDATE: true,
+  EXRULE: true,
+  'RECURRENCE-ID': true,
+});
+
 const textEncoder = new TextEncoder();
 
 function parseLimit(value: number | undefined, fallback: number, name: string): number {
@@ -121,9 +143,10 @@ function unfoldLines(input: string, maxLineLength: number): readonly string[] {
     physicalLines.pop();
   }
 
-  const unfolded: string[] = [];
+  const unfolded: Array<{ fragments: string[]; byteLength: number }> = [];
   for (const physicalLine of physicalLines) {
-    if (textEncoder.encode(physicalLine).byteLength > maxLineLength) {
+    const physicalByteLength = textEncoder.encode(physicalLine).byteLength;
+    if (physicalByteLength > maxLineLength) {
       throw new ICalParseError('line_too_long', 'iCalendar contains an oversized line.');
     }
     if (physicalLine.startsWith(' ') || physicalLine.startsWith('\t')) {
@@ -131,18 +154,20 @@ function unfoldLines(input: string, maxLineLength: number): readonly string[] {
       if (previous === undefined) {
         throw new ICalParseError('invalid_line', 'iCalendar begins with a continuation line.');
       }
-      unfolded[unfolded.length - 1] = previous + physicalLine.slice(1);
-      if (textEncoder.encode(unfolded[unfolded.length - 1] as string).byteLength > maxLineLength) {
+      // The fold marker is one ASCII byte and is not part of the unfolded value.
+      previous.byteLength += physicalByteLength - 1;
+      if (previous.byteLength > maxLineLength) {
         throw new ICalParseError('line_too_long', 'iCalendar contains an oversized unfolded line.');
       }
+      previous.fragments.push(physicalLine.slice(1));
       continue;
     }
     if (physicalLine.length === 0) {
       throw new ICalParseError('invalid_line', 'iCalendar contains an empty line.');
     }
-    unfolded.push(physicalLine);
+    unfolded.push({ fragments: [physicalLine], byteLength: physicalByteLength });
   }
-  return unfolded;
+  return unfolded.map(({ fragments }) => fragments.join(''));
 }
 
 function splitParameters(value: string): readonly string[] {
@@ -383,7 +408,15 @@ function propertyValue(
 
 function parseEvent(raw: RawEvent): ICalEvent {
   const uidProperty = propertyValue(raw.properties, 'UID', raw.line);
-  const uid = unescapeText(uidProperty.value, uidProperty.line).trim();
+  const rawUid = uidProperty.value;
+  if (rawUid.length === 0 || /^\s|\s$/u.test(rawUid) || hasAnyControlCharacters(rawUid)) {
+    throw new ICalParseError(
+      'invalid_uid',
+      'calendar event UID contains boundary whitespace or control characters.',
+      uidProperty.line,
+    );
+  }
+  const uid = unescapeText(rawUid, uidProperty.line);
   if (
     uid.length === 0 ||
     uid.length > ICAL_PARSE_LIMITS.maxUidLength ||
@@ -391,7 +424,7 @@ function parseEvent(raw: RawEvent): ICalEvent {
   ) {
     throw new ICalParseError(
       'invalid_uid',
-      'calendar event UID is empty or too long.',
+      'calendar event UID must be bounded text without control characters.',
       uidProperty.line,
     );
   }
@@ -435,10 +468,21 @@ function parseEvent(raw: RawEvent): ICalEvent {
     );
   }
 
+  const transparencyProperty = raw.properties.get('TRANSP');
+  const transparencyValue =
+    transparencyProperty === undefined ? 'OPAQUE' : transparencyProperty.value.toUpperCase();
+  if (transparencyValue !== 'OPAQUE' && transparencyValue !== 'TRANSPARENT') {
+    throw new ICalParseError(
+      'invalid_transparency',
+      'calendar event transparency is not supported.',
+      transparencyProperty?.line ?? raw.line,
+    );
+  }
+
   const sequenceProperty = raw.properties.get('SEQUENCE');
   let sequence: number | null = null;
   if (sequenceProperty !== undefined) {
-    if (!/^\d{1,10}$/u.test(sequenceProperty.value)) {
+    if (!/^\+?\d+$/u.test(sequenceProperty.value)) {
       throw new ICalParseError(
         'invalid_sequence',
         'calendar event sequence is invalid.',
@@ -446,7 +490,7 @@ function parseEvent(raw: RawEvent): ICalEvent {
       );
     }
     sequence = Number(sequenceProperty.value);
-    if (!Number.isSafeInteger(sequence)) {
+    if (!Number.isInteger(sequence) || sequence > ICAL_SEQUENCE_MAX) {
       throw new ICalParseError(
         'invalid_sequence',
         'calendar event sequence is invalid.',
@@ -472,7 +516,7 @@ function parseEvent(raw: RawEvent): ICalEvent {
     uid,
     arrival: start,
     departure: end,
-    status,
+    status: transparencyValue === 'TRANSPARENT' ? 'cancelled' : status,
     sequence,
     lastModified,
     summary,
@@ -513,6 +557,7 @@ export function parseICalCalendar(
     readonly line: number;
   } | null = null;
   const parsedEvents: ICalEvent[] = [];
+  let eventCount = 0;
   let prodId: string | null = null;
   const seenUids = new Set<string>();
 
@@ -535,13 +580,14 @@ export function parseICalCalendar(
             lineNumber,
           );
         }
-        if (parsedEvents.length >= maxEvents) {
+        if (eventCount >= maxEvents) {
           throw new ICalParseError(
             'event_limit',
             'iCalendar event count exceeds the configured limit.',
             lineNumber,
           );
         }
+        eventCount += 1;
         currentEvent = { properties: new Map(), line: lineNumber };
         component = 'VEVENT';
       } else {
@@ -562,8 +608,10 @@ export function parseICalCalendar(
           lineNumber,
         );
       }
-      const rawEvent: RawEvent = { properties: currentEvent.properties, line: currentEvent.line };
-      const parsedEvent = parseEvent(rawEvent);
+      const parsedEvent = parseEvent({
+        properties: currentEvent.properties,
+        line: currentEvent.line,
+      });
       if (seenUids.has(parsedEvent.uid)) {
         throw new ICalParseError(
           'duplicate_uid',
@@ -602,10 +650,15 @@ export function parseICalCalendar(
       );
     }
     if (component === 'VEVENT' && currentEvent !== null) {
+      if (RECURRENCE_PROPERTIES[property.name] === true) {
+        throw new ICalParseError(
+          'unsupported_recurrence',
+          'recurring calendar events are not supported.',
+          property.line,
+        );
+      }
       if (
-        ['UID', 'DTSTART', 'DTEND', 'STATUS', 'SEQUENCE', 'LAST-MODIFIED', 'SUMMARY'].includes(
-          property.name,
-        ) &&
+        UNIQUE_EVENT_PROPERTIES[property.name] === true &&
         currentEvent.properties.has(property.name)
       ) {
         throw new ICalParseError(
@@ -637,6 +690,3 @@ export function parseICalCalendar(
     events: Object.freeze(parsedEvents),
   });
 }
-
-export const parseICal = parseICalCalendar;
-export const parseICalendar = parseICalCalendar;

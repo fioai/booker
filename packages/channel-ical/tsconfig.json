@@ -5,5 +5,6 @@
     "outDir": "dist",
     "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
   },
+  "references": [{ "path": "../channel-calendar" }],
   "include": ["src/**/*.ts"]
 }

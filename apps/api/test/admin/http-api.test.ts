@@ -15,12 +15,12 @@ import type { ICalSyncHealth } from '../../src/jobs/ical/sync.js';
 import {
   createAdminHttpApi,
   createAdminSessionStore,
-  createPublicBookingHttpServer,
+  createApiHttpServer,
   hashOwnerPassword,
   type AdminCredentialRecord,
   type AdminHttpApiDependencies,
 } from '../../src/index.js';
-import { renderAdminPropertyPage } from '../../../../apps/admin/src/admin-property-page.js';
+import { renderPropertyPage } from '../../src/admin/views/property-page.js';
 import { sampleBungalowFixture } from '../../../../packages/booking-core/test/property/fixtures.js';
 
 const propertyId = sampleBungalowFixture.id;
@@ -85,6 +85,7 @@ const request: BookingRequestRecord = {
     minimumStayNights: 2,
   },
   createdAt: '2026-07-12T12:00:00.000Z',
+  fingerprintVersion: 'sha256-v1',
 };
 
 const health: ICalSyncHealth = {
@@ -592,6 +593,42 @@ describe('owner admin authentication, authorization, and tenant-safe HTTP behavi
     );
   });
 
+  it.each([
+    ['unsupported_recurrence', 'The calendar source contained unsupported recurrence data.'],
+    ['invalid_transparency', 'The calendar source returned unsupported event transparency.'],
+  ] as const)('preserves the safe %s iCalendar error in admin health', async (code, message) => {
+    const feedUrl = 'https://calendar.example.test/private-feed.ics';
+    const token = 'private-feed-token';
+    const rawError = 'Raw parser error at parse.ts:655';
+    const deps = dependencies(passwordHash);
+    vi.mocked(deps.ical.health).mockReturnValue({
+      ...health,
+      error: {
+        code,
+        message: `${rawError}; feed=${feedUrl}?token=${token}`,
+      },
+    });
+    const { api, cookies } = await authenticatedApi(deps);
+
+    const response = await api.handle({
+      method: 'GET',
+      path: `/admin/properties/${propertyId}/ical/${health.sourceId}/health`,
+      headers: { cookie: cookies },
+    });
+
+    expect(response).toMatchObject({
+      status: 200,
+      body: {
+        sourceId: health.sourceId,
+        error: { code, message },
+      },
+    });
+    const serializedBody = JSON.stringify(response.body);
+    expect(serializedBody).not.toContain(feedUrl);
+    expect(serializedBody).not.toContain(token);
+    expect(serializedBody).not.toContain(rawError);
+  });
+
   it('lists private booking requests only through the authenticated tenant scope', async () => {
     const deps = dependencies(passwordHash);
     const { api, cookies } = await authenticatedApi(deps);
@@ -654,7 +691,7 @@ describe('owner admin authentication, authorization, and tenant-safe HTTP behavi
   });
 
   it('renders an escaped same-domain admin page with private content and CSRF forms', () => {
-    const rendered = renderAdminPropertyPage({
+    const rendered = renderPropertyPage({
       property: {
         id: propertyId,
         name: '<Owner property>',
@@ -676,7 +713,7 @@ describe('owner admin authentication, authorization, and tenant-safe HTTP behavi
 });
 
 describe('owner admin over the real same-domain HTTP server', () => {
-  let server: ReturnType<typeof createPublicBookingHttpServer> | undefined;
+  let server: ReturnType<typeof createApiHttpServer> | undefined;
 
   afterEach(async () => {
     await server?.close();
@@ -687,7 +724,7 @@ describe('owner admin over the real same-domain HTTP server', () => {
     const passwordHash = await hashOwnerPassword(password);
     const admin = dependencies(passwordHash);
     const publicProperty = property();
-    server = createPublicBookingHttpServer(
+    server = createApiHttpServer(
       {
         properties: { findPublicById: vi.fn(async () => publicProperty) },
         availability: { isAvailable: vi.fn(async () => true) },

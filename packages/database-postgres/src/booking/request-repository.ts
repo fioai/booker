@@ -12,10 +12,10 @@ import {
   type QuoteSnapshotValidationError,
 } from '@booking-engine/booking-core';
 
-import { PersistenceError, isPostgresError } from '../persistence-errors.js';
-import { lockProperty } from '../property-lock.js';
-import type { PostgresDatabasePort, PostgresTransactionPort } from '../postgres-database.js';
-import { qualifiedTable } from '../sql-identifiers.js';
+import { PersistenceError, isPostgresError } from '../database/errors.js';
+import { lockProperty } from '../database/property-lock.js';
+import type { PostgresDatabasePort, PostgresTransactionPort } from '../database/postgres.js';
+import { qualifiedTable } from '../database/identifiers.js';
 
 export interface BookingRequestOrganizationScope {
   readonly organizationId: string;
@@ -48,9 +48,9 @@ export interface BookingRequestRecord extends BookingRequestCreateInput {
   readonly propertyId: string;
   readonly status: BookingRequestStatus;
   readonly createdAt: string;
-  /** Private server fields are optional for compatibility with older in-memory adapters. */
   readonly idempotencyKey?: string;
   readonly requestFingerprint?: string;
+  readonly fingerprintVersion: 'legacy-md5-request-id' | 'sha256-v1';
   readonly holdRecordId?: string;
   readonly holdExpiresAt?: string;
   readonly decidedAt?: string;
@@ -62,16 +62,11 @@ export interface BookingRequestRecheckResult {
 }
 
 export interface BookingRequestRepository {
-  create(
-    scope: BookingRequestOrganizationScope,
-    propertyId: string,
-    input: BookingRequestCreateInput,
-  ): Promise<BookingRequestRecord>;
   submit(
     scope: BookingRequestOrganizationScope,
     propertyId: string,
     input: BookingRequestCreateInput,
-    options: BookingRequestSubmitOptions | string,
+    options: BookingRequestSubmitOptions,
   ): Promise<BookingRequestRecord>;
   find(
     scope: BookingRequestOrganizationScope,
@@ -120,6 +115,7 @@ interface BookingRequestRow extends QueryResultRow {
   readonly created_at: unknown;
   readonly idempotency_key: unknown;
   readonly request_fingerprint: unknown;
+  readonly fingerprint_version: unknown;
   readonly hold_record_id: unknown;
   readonly hold_expires_at: unknown;
   readonly decided_at: unknown;
@@ -138,11 +134,25 @@ const MAX_IDEMPOTENCY_KEY_LENGTH = 128;
 const MAX_HOLD_DURATION_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_HOLD_DURATION_MS = 15 * 60 * 1000;
 
+function countUnicodeCodePoints(value: string, maximum = Number.POSITIVE_INFINITY): number {
+  let length = 0;
+  let offset = 0;
+  while (offset < value.length) {
+    const codePoint = value.codePointAt(offset);
+    offset += codePoint !== undefined && codePoint > 0xffff ? 2 : 1;
+    length += 1;
+    if (length > maximum) {
+      return length;
+    }
+  }
+  return length;
+}
+
 const REQUEST_COLUMNS = `
   organization_id, property_id, request_id,
   arrival::text AS arrival, departure::text AS departure,
   guest_count, guest_name, guest_email, message, status, quote_json,
-  created_at, idempotency_key, request_fingerprint, hold_record_id,
+  created_at, idempotency_key, request_fingerprint, fingerprint_version, hold_record_id,
   hold_expires_at, decided_at
 `;
 
@@ -152,8 +162,8 @@ function validateIdentifier(
 ): asserts value is string {
   if (
     typeof value !== 'string' ||
-    value.length === 0 ||
-    value.length > MAX_IDENTIFIER_LENGTH ||
+    value === '' ||
+    countUnicodeCodePoints(value, MAX_IDENTIFIER_LENGTH) > MAX_IDENTIFIER_LENGTH ||
     !IDENTIFIER_PATTERN.test(value)
   ) {
     throw new PersistenceError(code, `${code} must be a valid identifier.`);
@@ -176,17 +186,20 @@ function validateRequestId(requestId: string): string {
 }
 
 function hasControlCharacters(value: string): boolean {
-  return [...value].some((character) => {
-    const codePoint = character.codePointAt(0) ?? 0;
-    return codePoint < 32 || codePoint === 127;
-  });
+  for (let offset = 0; offset < value.length; offset += 1) {
+    const codeUnit = value.charCodeAt(offset);
+    if (codeUnit < 32 || codeUnit === 127) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function validateIdempotencyKey(value: unknown): string {
   if (
     typeof value !== 'string' ||
-    value.trim().length === 0 ||
-    value.length > MAX_IDEMPOTENCY_KEY_LENGTH ||
+    value.trim() === '' ||
+    countUnicodeCodePoints(value, MAX_IDEMPOTENCY_KEY_LENGTH) > MAX_IDEMPOTENCY_KEY_LENGTH ||
     hasControlCharacters(value)
   ) {
     throw new PersistenceError(
@@ -237,8 +250,8 @@ function validateInput(input: BookingRequestCreateInput): BookingRequestCreateIn
   }
   if (
     typeof input?.guestName !== 'string' ||
-    input.guestName.trim().length === 0 ||
-    input.guestName.length > 120 ||
+    input.guestName.trim() === '' ||
+    countUnicodeCodePoints(input.guestName, 120) > 120 ||
     hasControlCharacters(input.guestName)
   ) {
     throw new PersistenceError(
@@ -248,8 +261,8 @@ function validateInput(input: BookingRequestCreateInput): BookingRequestCreateIn
   }
   if (
     typeof input?.guestEmail !== 'string' ||
-    input.guestEmail.trim().length < 3 ||
-    input.guestEmail.length > 254 ||
+    countUnicodeCodePoints(input.guestEmail.trim(), 3) < 3 ||
+    countUnicodeCodePoints(input.guestEmail, 254) > 254 ||
     hasControlCharacters(input.guestEmail) ||
     !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(input.guestEmail)
   ) {
@@ -261,8 +274,8 @@ function validateInput(input: BookingRequestCreateInput): BookingRequestCreateIn
   if (
     input.message !== null &&
     (typeof input.message !== 'string' ||
-      input.message.trim().length === 0 ||
-      input.message.length > 2000 ||
+      input.message.trim() === '' ||
+      countUnicodeCodePoints(input.message, 2000) > 2000 ||
       hasControlCharacters(input.message))
   ) {
     throw new PersistenceError(
@@ -336,6 +349,23 @@ function requireProperty(
         );
       }
     });
+}
+function matchesNormalizedRequest(
+  record: BookingRequestRecord,
+  propertyId: string,
+  request: BookingRequestCreateInput,
+): boolean {
+  return (
+    record.propertyId === propertyId &&
+    record.arrival === request.arrival &&
+    record.departure === request.departure &&
+    record.guestCount === request.guestCount &&
+    record.guestName.trim() === request.guestName.trim() &&
+    record.guestEmail.trim() === request.guestEmail.trim() &&
+    (record.message === null ? null : record.message.trim()) ===
+      (request.message === null ? null : request.message.trim()) &&
+    JSON.stringify(record.quote) === JSON.stringify(request.quote)
+  );
 }
 
 async function requireNoICalConflict(
@@ -435,6 +465,8 @@ function mapRow(row: BookingRequestRow): BookingRequestRecord {
       row.status !== 'expired') ||
     typeof row.idempotency_key !== 'string' ||
     typeof row.request_fingerprint !== 'string' ||
+    (row.fingerprint_version !== 'legacy-md5-request-id' &&
+      row.fingerprint_version !== 'sha256-v1') ||
     (row.hold_record_id !== null && typeof row.hold_record_id !== 'string') ||
     (row.hold_expires_at !== null &&
       !(row.hold_expires_at instanceof Date || typeof row.hold_expires_at === 'string')) ||
@@ -452,6 +484,12 @@ function mapRow(row: BookingRequestRow): BookingRequestRecord {
       snapshot.errors as readonly QuoteSnapshotValidationError[],
     );
   }
+  if (row.arrival !== snapshot.value.arrival || row.departure !== snapshot.value.departure) {
+    throw new PersistenceError(
+      'database_corruption',
+      'booking request dates do not match the stored quote snapshot.',
+    );
+  }
   return Object.freeze({
     organizationId: row.organization_id,
     propertyId: row.property_id,
@@ -467,25 +505,13 @@ function mapRow(row: BookingRequestRow): BookingRequestRecord {
     createdAt: mapTimestamp(row.created_at, 'created_at'),
     idempotencyKey: row.idempotency_key,
     requestFingerprint: row.request_fingerprint,
+    fingerprintVersion: row.fingerprint_version,
     ...(row.hold_record_id === null ? {} : { holdRecordId: row.hold_record_id }),
     ...(row.hold_expires_at === null
       ? {}
       : { holdExpiresAt: mapTimestamp(row.hold_expires_at, 'hold_expires_at') }),
     ...(row.decided_at === null ? {} : { decidedAt: mapTimestamp(row.decided_at, 'decided_at') }),
   });
-}
-
-function asOptions(options: BookingRequestSubmitOptions | string): BookingRequestSubmitOptions {
-  if (typeof options === 'string') {
-    return { idempotencyKey: options };
-  }
-  if (typeof options !== 'object' || options === null || Array.isArray(options)) {
-    throw new PersistenceError(
-      'booking_request_validation',
-      'booking request submission options must be an object.',
-    );
-  }
-  return options;
 }
 
 type BookingOutboxEventType =
@@ -578,35 +604,29 @@ export class PostgresBookingRequestRepository implements BookingRequestRepositor
     }
   }
 
-  async create(
-    scope: BookingRequestOrganizationScope,
-    propertyId: string,
-    input: BookingRequestCreateInput,
-  ): Promise<BookingRequestRecord> {
-    return this.submit(scope, propertyId, input, { idempotencyKey: input.id });
-  }
-
   async submit(
     scope: BookingRequestOrganizationScope,
     propertyId: string,
     input: BookingRequestCreateInput,
-    options: BookingRequestSubmitOptions | string,
+    options: BookingRequestSubmitOptions,
   ): Promise<BookingRequestRecord> {
     const organizationId = validateScope(scope);
     const property = validatePropertyId(propertyId);
     const request = validateInput(input);
-    const submissionOptions = asOptions(options);
-    const idempotencyKey = validateIdempotencyKey(submissionOptions.idempotencyKey);
-    if (
-      submissionOptions.deferInventory !== undefined &&
-      typeof submissionOptions.deferInventory !== 'boolean'
-    ) {
+    if (typeof options !== 'object' || options === null || Array.isArray(options)) {
+      throw new PersistenceError(
+        'booking_request_validation',
+        'booking request submission options must be an object.',
+      );
+    }
+    const idempotencyKey = validateIdempotencyKey(options.idempotencyKey);
+    if (options.deferInventory !== undefined && typeof options.deferInventory !== 'boolean') {
       throw new PersistenceError(
         'booking_request_validation',
         'deferInventory must be a boolean when provided.',
       );
     }
-    const deferInventory = submissionOptions.deferInventory === true;
+    const deferInventory = options.deferInventory === true;
     const requestFingerprint = fingerprint(property, request);
     const submittedAt = parseTimestamp(this.clock(), 'clock');
     const holdExpiresAt = new Date(submittedAt.getTime() + this.holdDurationMs);
@@ -628,11 +648,36 @@ export class PostgresBookingRequestRepository implements BookingRequestRepositor
         const existingRow = existing.rows[0];
         if (existingRow !== undefined) {
           const existingRecord = mapRow(existingRow);
-          if (existingRecord.requestFingerprint !== requestFingerprint) {
+          const matchesExisting =
+            existingRecord.fingerprintVersion === 'legacy-md5-request-id'
+              ? matchesNormalizedRequest(existingRecord, property, request)
+              : existingRecord.requestFingerprint === requestFingerprint;
+          if (!matchesExisting) {
             throw new PersistenceError(
               'idempotency_key_reuse',
               'idempotency key was already used with a different request.',
             );
+          }
+          if (existingRecord.fingerprintVersion === 'legacy-md5-request-id') {
+            const upgraded = await transaction.query<BookingRequestRow>(
+              `
+                UPDATE ${this.requestsTable}
+                SET request_fingerprint = $4,
+                    fingerprint_version = 'sha256-v1',
+                    updated_at = $5
+                WHERE organization_id = $1 AND property_id = $2 AND request_id = $3
+                RETURNING ${REQUEST_COLUMNS}
+              `,
+              [organizationId, property, existingRecord.id, requestFingerprint, submittedAt],
+            );
+            const upgradedRow = upgraded.rows[0];
+            if (upgradedRow === undefined) {
+              throw new PersistenceError(
+                'database_corruption',
+                'legacy booking request upgrade returned no row.',
+              );
+            }
+            return mapRow(upgradedRow);
           }
           return existingRecord;
         }
@@ -642,12 +687,12 @@ export class PostgresBookingRequestRepository implements BookingRequestRepositor
             INSERT INTO ${this.requestsTable} (
               organization_id, property_id, request_id,
               arrival, departure, guest_count, guest_name, guest_email, message,
-              status, quote_json, idempotency_key, request_fingerprint,
+              status, quote_json, idempotency_key, request_fingerprint, fingerprint_version,
               hold_record_id, hold_expires_at, created_at, updated_at
             )
             VALUES (
               $1, $2, $3, $4::date, $5::date, $6, $7, $8, $9,
-              'pending', $10::jsonb, $11, $12, $13, $14, $15, $15
+              'pending', $10::jsonb, $11, $12, 'sha256-v1', $13, $14, $15, $15
             )
             RETURNING ${REQUEST_COLUMNS}
           `,

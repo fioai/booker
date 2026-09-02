@@ -1,6 +1,7 @@
 /* global process */
 
 import { validateRuntimeEnvironment } from './lib/environment.mjs';
+import { loadEnvironment } from './lib/load-environment.mjs';
 
 function help() {
   process.stdout.write(
@@ -18,6 +19,7 @@ async function main() {
     help();
     return;
   }
+  loadEnvironment();
   const config = validateRuntimeEnvironment(process.env);
   const [databaseModule, apiModule, seedModule] = await Promise.all([
     import('../packages/database-postgres/dist/index.js'),
@@ -38,12 +40,12 @@ async function main() {
     }
 
     const properties = databaseModule.createPostgresPropertyRepository(database);
-    const availability = databaseModule.createAvailabilityRepository(database);
-    const rates = databaseModule.createRateRepository(database);
+    const availability = databaseModule.createPostgresAvailabilityRepository(database);
+    const rates = databaseModule.createPostgresRateRepository(database);
     const bookingRequests = databaseModule.createPostgresBookingRequestRepository(database);
     const credentials = apiModule.createPostgresAdminCredentialStore(database);
     const sessions = apiModule.createPostgresAdminSessionStore(database, { maxSessions: 10 });
-    server = apiModule.createPublicBookingHttpServer(
+    server = apiModule.createApiHttpServer(
       {
         properties,
         availability,

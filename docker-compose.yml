@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-booking_engine_local}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-only-placeholder}
     ports:
-      - '${POSTGRES_PORT:-15432}:5432'
+      - '127.0.0.1:${POSTGRES_PORT:-15432}:5432'
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -32,12 +32,13 @@ services:
       BOOKING_ENGINE_PROPERTY_ID: sample-bungalow
       BOOKING_ENGINE_SAMPLE_DATA: 'true'
       BOOKING_ENGINE_SAMPLE_PASSWORD: local-only-owner-password
+      ADMIN_ORIGIN: 'http://127.0.0.1:${API_PORT:-13000}'
       SECURE_COOKIES: 'false'
     depends_on:
       postgres:
         condition: service_healthy
     ports:
-      - '${API_PORT:-13000}:3000'
+      - '127.0.0.1:${API_PORT:-13000}:3000'
     healthcheck:
       test:
         [
@@ -54,8 +55,8 @@ services:
   mailpit:
     image: axllent/mailpit:v1.21@sha256:81370195cd4a0eab9604d17c2617a7525b0486f9365555253b6c5376c6350f1a
     ports:
-      - '${MAILPIT_SMTP_PORT:-11025}:1025'
-      - '${MAILPIT_UI_PORT:-18025}:8025'
+      - '127.0.0.1:${MAILPIT_SMTP_PORT:-11025}:1025'
+      - '127.0.0.1:${MAILPIT_UI_PORT:-18025}:8025'
 
 volumes:
   postgres-data:

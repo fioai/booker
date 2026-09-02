@@ -7,59 +7,71 @@ and record restore access. Never commit a dump or put a connection string in a l
 
 ## Rehearsal command
 
-The repository verifier requires a local/test environment and a source database
-containing migrated property/rate data:
+Complete the root Quickstart first. Copy `.env.example` to `.env`, install the
+dependencies, and start Compose. The copied environment selects the local source
+database and keeps the `DATABASE_URL` credentials aligned with PostgreSQL.
 
-    corepack.cmd pnpm backup:restore
+The package command selects one deployment identity source. It loads the complete optional
+root `.env` file only when no deployment identity variable is exported. If any deployment
+identity variable is exported, it ignores `.env` and uses only the process environment.
 
-When pg_dump and pg_restore are installed, set BACKUP_USE_HOST_TOOLS=true.
-Otherwise the script runs the PostgreSQL tools inside the selected Compose service:
+Copy the decoded database name from `DATABASE_URL`. Do not copy the URL, user, or password.
+For the copied template, the database name is `replace_me_local_database`.
 
-    BACKUP_POSTGRES_SERVICE=postgres
-    COMPOSE_PROJECT_NAME=booking-engine-hardening
-    corepack.cmd pnpm backup:restore
+Linux, macOS, or a POSIX shell such as Windows Git Bash:
+
+```sh
+corepack pnpm backup:restore -- --confirm-database replace_me_local_database
+```
+
+Windows PowerShell or Command Prompt:
+
+```text
+corepack.cmd pnpm backup:restore -- --confirm-database replace_me_local_database
+```
+
+On Windows Git Bash, use `corepack.cmd pnpm` if the extensionless `corepack` shim fails.
+Make the same substitution for the clean-room command below.
+
+When `pg_dump` and `pg_restore` are installed, set `BACKUP_USE_HOST_TOOLS=true` in
+the copied `.env` file or export it before the command. Otherwise, the script runs
+the PostgreSQL tools in the `postgres` Compose service. `BACKUP_POSTGRES_SERVICE`
+selects only the Compose service container that runs these tools. It never authorizes
+another connection location. The `DATABASE_URL` host must be one of these literal
+loopback values: `127.0.0.1`, `localhost`, or `::1`.
 
 The script:
 
-1. Connects to the source database without printing DATABASE_URL.
-2. Creates a fresh database with a hard-coded booking-engine*restore* prefix.
-3. Runs a custom-format pg_dump from the source.
-4. Streams that archive to pg_restore in the separate empty database.
-5. Compares row counts across all Booking Engine tables and verifies the availability
+1. Validates the local or test environment, the literal loopback `DATABASE_URL` host,
+   and the exact decoded database-name confirmation before it opens a database pool.
+2. Connects to the source database without printing `DATABASE_URL`.
+3. Creates a fresh database with a hard-coded `booking_engine_restore_` prefix.
+4. Runs a custom-format `pg_dump` from the source.
+5. Streams that archive to `pg_restore` in the separate empty database.
+6. Compares row counts across all Booking Engine tables and verifies the availability
    exclusion constraint, no active overlap, and foreign-key-backed request
    references.
-6. Removes only the temporary database and temporary archive.
+7. Removes only the temporary database and temporary archive.
 
 The clean-room command performs this exercise after its real public/admin smoke:
 
-    corepack.cmd pnpm docker:clean-room
+    corepack pnpm docker:clean-room
 
 The target database is deliberately separate from the source. A successful restore
 is not a substitute for an application-level privacy check or a disaster-recovery
 rehearsal with encrypted off-host backups.
 
-## Windows PowerShell and Git Bash
+## Staging and production safety
 
-PowerShell:
+Run this verifier only against a dedicated local or test database. The command rejects staging
+and production environments. It also rejects a `DATABASE_URL` host that is not the literal
+loopback value `127.0.0.1`, `localhost`, or `::1` before it opens a database pool.
+`BACKUP_POSTGRES_SERVICE` does not change this rule. It only selects the Compose tool container.
+The script creates and drops a temporary database on the local PostgreSQL server in `DATABASE_URL`.
 
-    $env:BOOKING_ENGINE_ENV='local'
-    $env:DATABASE_URL='postgresql://booking_engine_local:local-only-placeholder@127.0.0.1:15432/booking_engine_local'
-    $env:DATABASE_SCHEMA='public'
-    $env:COMPOSE_PROJECT_NAME='booking-engine-hardening'
-    corepack.cmd pnpm backup:restore
-
-Git Bash:
-
-    export BOOKING_ENGINE_ENV=local
-    export DATABASE_URL='postgresql://booking_engine_local:local-only-placeholder@127.0.0.1:15432/booking_engine_local'
-    export DATABASE_SCHEMA=public
-    export COMPOSE_PROJECT_NAME=booking-engine-hardening
-    corepack.cmd pnpm backup:restore
-
-Use corepack.cmd in Git Bash so MSYS does not rewrite a path passed to the
-extensionless Corepack shim. Quote a URL when it contains shell metacharacters and
-URL-encode reserved characters in a real password. Do not use docker compose exec
-without -T; an allocated TTY can corrupt a custom-format archive.
+For staging or production recovery, use the approved recovery process and restore
+into a separate target. Require owner approval before any connection switch. Never
+use the local verification command as a production recovery shortcut.
 
 ## Recovery procedure
 

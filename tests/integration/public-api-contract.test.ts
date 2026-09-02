@@ -5,20 +5,20 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 
 import type { PropertyConfigurationInput } from '../../packages/booking-core/src/index.js';
 import {
-  createAvailabilityRepository,
-  createOrganizationRepository,
+  createPostgresAvailabilityRepository,
+  createPostgresOrganizationRepository,
   createPostgresBookingRequestRepository,
   createPostgresDatabase,
   createPostgresPropertyRepository,
-  createRateRepository,
+  createPostgresRateRepository,
   runMigrations,
   type PostgresDatabasePort,
 } from '../../packages/database-postgres/src/index.js';
-import { createPublicBookingHttpServer } from '../../apps/api/src/index.js';
+import { createApiHttpServer } from '../../apps/api/src/index.js';
 
 const connectionString =
   process.env['DATABASE_URL'] ??
-  'postgresql://booking_engine_local:local-only-placeholder@127.0.0.1:5432/booking_engine_local';
+  'postgresql://booking_engine_local:local-only-placeholder@127.0.0.1:15432/booking_engine_local';
 const runId = randomUUID().replaceAll('-', '').slice(0, 12);
 const integrationSchema = `public_api_test_${runId}`;
 const table = (name: string): string => `"${integrationSchema}"."${name}"`;
@@ -48,7 +48,7 @@ describe('PostgreSQL-backed public booking REST contract', () => {
   let organizationId: string;
   let otherOrganizationId: string;
   let propertyId: string;
-  let server: ReturnType<typeof createPublicBookingHttpServer> | undefined;
+  let server: ReturnType<typeof createApiHttpServer> | undefined;
   let baseUrl = '';
 
   beforeAll(async () => {
@@ -64,7 +64,7 @@ describe('PostgreSQL-backed public booking REST contract', () => {
     otherOrganizationId = `org-b-${testId}`;
     propertyId = `property-${testId}`;
 
-    const organizations = createOrganizationRepository(database as PostgresDatabasePort);
+    const organizations = createPostgresOrganizationRepository(database as PostgresDatabasePort);
     const properties = createPostgresPropertyRepository(database as PostgresDatabasePort);
     await organizations.create({ id: organizationId, name: 'Public API Tenant A' });
     await organizations.create({ id: otherOrganizationId, name: 'Public API Tenant B' });
@@ -73,7 +73,7 @@ describe('PostgreSQL-backed public booking REST contract', () => {
       makeProperty(propertyId, `PRIVATE-${runId}-operational-note`),
     );
 
-    const rates = createRateRepository(database as PostgresDatabasePort);
+    const rates = createPostgresRateRepository(database as PostgresDatabasePort);
     await rates.saveRatePlan({ organizationId }, propertyId, {
       currency: 'EUR',
       baseNightlyRateMinor: 12500,
@@ -81,10 +81,10 @@ describe('PostgreSQL-backed public booking REST contract', () => {
       minimumStayNights: 2,
     });
 
-    server = createPublicBookingHttpServer(
+    server = createApiHttpServer(
       {
         properties,
-        availability: createAvailabilityRepository(database as PostgresDatabasePort),
+        availability: createPostgresAvailabilityRepository(database as PostgresDatabasePort),
         rates,
         bookingRequests: createPostgresBookingRequestRepository(database as PostgresDatabasePort),
       },
@@ -163,13 +163,121 @@ describe('PostgreSQL-backed public booking REST contract', () => {
     expect(JSON.stringify(requestBody)).not.toContain('Ada Lovelace');
   });
 
+  it('persists exact Unicode text limits and rejects the next code point', async () => {
+    const astralCodePoint = '😀';
+    const exactInput = {
+      arrival: '2026-08-01',
+      departure: '2026-08-03',
+      guestCount: 2,
+      guestName: astralCodePoint.repeat(120),
+      guestEmail: `${astralCodePoint.repeat(241)}@example.test`,
+      message: astralCodePoint.repeat(2_000),
+    };
+    const submit = (idempotencyKey: string, body: Readonly<Record<string, unknown>>) =>
+      fetch(`${baseUrl}/v1/properties/${propertyId}/request-to-book`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'idempotency-key': idempotencyKey },
+        body: JSON.stringify(body),
+      });
+    const idempotencyKey = `unicode-boundary-${runId}`;
+
+    const acceptedResponse = await submit(idempotencyKey, exactInput);
+    expect(acceptedResponse.status).toBe(201);
+    const acceptedBody = await acceptedResponse.json();
+
+    const retryResponse = await submit(idempotencyKey, exactInput);
+    expect(retryResponse.status).toBe(201);
+    expect(await retryResponse.json()).toEqual(acceptedBody);
+
+    const mismatchResponse = await submit(idempotencyKey, {
+      ...exactInput,
+      message: `${astralCodePoint.repeat(1_999)}🚀`,
+    });
+    expect(mismatchResponse.status).toBe(409);
+    expect(await mismatchResponse.json()).toMatchObject({
+      error: { code: 'request_conflict' },
+    });
+
+    const maximumPlusOneCases = [
+      {
+        field: 'guestName',
+        idempotencyKey: `unicode-name-over-${runId}`,
+        body: { ...exactInput, guestName: astralCodePoint.repeat(121) },
+      },
+      {
+        field: 'guestEmail',
+        idempotencyKey: `unicode-email-over-${runId}`,
+        body: {
+          ...exactInput,
+          guestEmail: `${astralCodePoint.repeat(242)}@example.test`,
+        },
+      },
+      {
+        field: 'message',
+        idempotencyKey: `unicode-message-over-${runId}`,
+        body: { ...exactInput, message: astralCodePoint.repeat(2_001) },
+      },
+    ] as const;
+    for (const boundaryCase of maximumPlusOneCases) {
+      const response = await submit(boundaryCase.idempotencyKey, boundaryCase.body);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        error: {
+          code: 'validation_failed',
+          details: expect.arrayContaining([
+            expect.objectContaining({
+              field: boundaryCase.field,
+              code: 'string_too_long',
+            }),
+          ]),
+        },
+      });
+    }
+
+    const persisted = await pool?.query<{
+      request_count: number;
+      request_id: string;
+      request_fingerprint: string;
+      guest_name_length: number;
+      guest_email_length: number;
+      message_length: number;
+    }>(
+      `
+        SELECT
+          (
+            SELECT count(*)::integer
+            FROM ${table('booking_requests')}
+            WHERE organization_id = $1
+          ) AS request_count,
+          request_id,
+          request_fingerprint,
+          char_length(guest_name)::integer AS guest_name_length,
+          char_length(guest_email)::integer AS guest_email_length,
+          char_length(message)::integer AS message_length
+        FROM ${table('booking_requests')}
+        WHERE organization_id = $1 AND idempotency_key = $2
+      `,
+      [organizationId, idempotencyKey],
+    );
+    expect(persisted?.rows).toEqual([
+      {
+        request_count: 1,
+        request_id: acceptedBody.id,
+        request_fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/u),
+        guest_name_length: 120,
+        guest_email_length: 254,
+        message_length: 2_000,
+      },
+    ]);
+  });
+
   it('does not cross tenant boundaries and returns stable public errors', async () => {
     await server?.close();
-    server = createPublicBookingHttpServer(
+    server = createApiHttpServer(
       {
         properties: createPostgresPropertyRepository(database as PostgresDatabasePort),
-        availability: createAvailabilityRepository(database as PostgresDatabasePort),
-        rates: createRateRepository(database as PostgresDatabasePort),
+        availability: createPostgresAvailabilityRepository(database as PostgresDatabasePort),
+        rates: createPostgresRateRepository(database as PostgresDatabasePort),
         bookingRequests: createPostgresBookingRequestRepository(database as PostgresDatabasePort),
       },
       { scope: { organizationId: otherOrganizationId } },

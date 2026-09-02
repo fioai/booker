@@ -1,8 +1,8 @@
 import type { QueryResultRow } from 'pg';
 
-import { PersistenceError, isPostgresError } from '../persistence-errors.js';
-import type { PostgresDatabasePort } from '../postgres-database.js';
-import { qualifiedTable } from '../sql-identifiers.js';
+import { PersistenceError, isPostgresError } from '../database/errors.js';
+import type { PostgresDatabasePort } from '../database/postgres.js';
+import { qualifiedTable } from '../database/identifiers.js';
 
 export type OwnerRole = 'owner' | 'admin' | 'manager' | 'viewer';
 
@@ -193,10 +193,8 @@ export class PostgresOwnerCredentialRepository implements OwnerCredentialReposit
   }
 }
 
-export function createOwnerCredentialRepository(
+export function createPostgresOwnerCredentialRepository(
   database: PostgresDatabasePort,
 ): OwnerCredentialRepository {
   return new PostgresOwnerCredentialRepository(database);
 }
-
-export const createPostgresOwnerCredentialRepository = createOwnerCredentialRepository;

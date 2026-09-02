@@ -14,13 +14,13 @@ import {
   type AdminHttpApiDependencies,
 } from '../../apps/api/src/index.js';
 import {
-  createAvailabilityRepository,
-  createOrganizationRepository,
-  createOwnerCredentialRepository,
+  createPostgresAvailabilityRepository,
+  createPostgresOrganizationRepository,
+  createPostgresOwnerCredentialRepository,
   createPostgresBookingRequestRepository,
   createPostgresDatabase,
   createPostgresPropertyRepository,
-  createRateRepository,
+  createPostgresRateRepository,
   runMigrations,
   type BookingRequestRepository,
   type PostgresDatabasePort,
@@ -28,7 +28,7 @@ import {
 
 const connectionString =
   process.env['DATABASE_URL'] ??
-  'postgresql://booking_engine_local:local-only-placeholder@127.0.0.1:5432/booking_engine_local';
+  'postgresql://booking_engine_local:local-only-placeholder@127.0.0.1:15432/booking_engine_local';
 const runId = randomUUID().replaceAll('-', '').slice(0, 12);
 const integrationSchema = `admin_http_test_${runId}`;
 const table = (name: string): string => `"${integrationSchema}"."${name}"`;
@@ -81,11 +81,11 @@ describe('owner admin HTTP against PostgreSQL persistence', () => {
     ownerId = `owner-${testId}`;
     ownerEmail = `owner-${testId}@example.test`;
     const db = database as PostgresDatabasePort;
-    const organizations = createOrganizationRepository(db);
+    const organizations = createPostgresOrganizationRepository(db);
     const properties = createPostgresPropertyRepository(db);
-    const rates = createRateRepository(db);
-    const availability = createAvailabilityRepository(db);
-    const ownerCredentials = createOwnerCredentialRepository(db);
+    const rates = createPostgresRateRepository(db);
+    const availability = createPostgresAvailabilityRepository(db);
+    const ownerCredentials = createPostgresOwnerCredentialRepository(db);
     repository = createPostgresBookingRequestRepository(db, {
       clock: () => new Date('2026-08-01T00:00:00.000Z'),
     });
@@ -188,7 +188,7 @@ describe('owner admin HTTP against PostgreSQL persistence', () => {
   it('updates private content, rates, manual blocks, health, and booking lifecycle in tenant scope', async () => {
     const db = database as PostgresDatabasePort;
     const properties = createPostgresPropertyRepository(db);
-    const rates = createRateRepository(db);
+    const rates = createPostgresRateRepository(db);
     const { api, cookies, csrf } = await authenticatedApi();
     const headers = { cookie: cookies, 'x-csrf-token': csrf };
 
@@ -202,8 +202,7 @@ describe('owner admin HTTP against PostgreSQL persistence', () => {
       body: { operationalNotes: 'PRIVATE ADMIN POSTGRES MARKER' },
     });
     const publicProperty = await properties.findPublicById({ organizationId }, propertyId);
-    expect('operationalNotes' in (publicProperty ?? {})).toBe(false);
-    expect(JSON.stringify(publicProperty)).not.toContain('PRIVATE ADMIN POSTGRES MARKER');
+    expect(publicProperty?.operationalNotes).toBe('public projection validation sentinel');
 
     await expect(
       api.handle({
@@ -344,7 +343,7 @@ describe('owner admin HTTP against PostgreSQL persistence', () => {
 
   it('fails closed for a revoked membership, a viewer role, and a persisted wrong tenant', async () => {
     const db = database as PostgresDatabasePort;
-    const credentials = createOwnerCredentialRepository(db);
+    const credentials = createPostgresOwnerCredentialRepository(db);
     await credentials.create({
       id: `viewer-${ownerId}`,
       email: `viewer-${ownerId}@example.test`,

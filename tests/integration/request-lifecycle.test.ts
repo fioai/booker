@@ -1,4 +1,7 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { copyFile, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { Pool } from 'pg';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -8,12 +11,12 @@ import type {
   QuoteBreakdown,
 } from '../../packages/booking-core/src/index.js';
 import {
-  createOrganizationRepository,
+  createPostgresOrganizationRepository,
   createPostgresBookingOutboxRepository,
   createPostgresBookingRequestRepository,
   createPostgresDatabase,
   createPostgresPropertyRepository,
-  createRateRepository,
+  createPostgresRateRepository,
   runMigrations,
   type BookingOutboxDeliveryEvent,
   type BookingRequestCreateInput,
@@ -21,10 +24,14 @@ import {
   OutboxDeliveryError,
   type PostgresDatabasePort,
 } from '../../packages/database-postgres/src/index.js';
+import {
+  MIGRATION_FILES,
+  runMigrationsFromDirectory,
+} from '../../packages/database-postgres/src/database/migrations.js';
 
 const connectionString =
   process.env['DATABASE_URL'] ??
-  'postgresql://booking_engine_local:local-only-placeholder@127.0.0.1:5432/booking_engine_local';
+  'postgresql://booking_engine_local:local-only-placeholder@127.0.0.1:15432/booking_engine_local';
 const runId = randomUUID().replaceAll('-', '').slice(0, 12);
 const integrationSchema = `request_lifecycle_test_${runId}`;
 const table = (name: string): string => `"${integrationSchema}"."${name}"`;
@@ -72,9 +79,9 @@ describe('PostgreSQL request-to-book lifecycle', () => {
     otherOrganizationId = `org-b-${testId}`;
     propertyId = `property-${testId}`;
     clockNow = now;
-    const organizations = createOrganizationRepository(database as PostgresDatabasePort);
+    const organizations = createPostgresOrganizationRepository(database as PostgresDatabasePort);
     const properties = createPostgresPropertyRepository(database as PostgresDatabasePort);
-    const rates = createRateRepository(database as PostgresDatabasePort);
+    const rates = createPostgresRateRepository(database as PostgresDatabasePort);
     await organizations.create({ id: organizationId, name: 'Lifecycle Tenant A' });
     await organizations.create({ id: otherOrganizationId, name: 'Lifecycle Tenant B' });
     await properties.create({ organizationId }, makeProperty(propertyId));
@@ -363,6 +370,97 @@ describe('PostgreSQL request-to-book lifecycle', () => {
     expect(counts?.rows[0]).toEqual({ requests: '1', holds: '1', events: '1' });
   });
 
+  it('counts persisted Unicode text by code point and keeps retry fingerprints stable', async () => {
+    const astralCodePoint = '😀';
+    const exactBoundaries = {
+      guestName: astralCodePoint.repeat(120),
+      guestEmail: `${astralCodePoint.repeat(241)}@example.test`,
+      message: astralCodePoint.repeat(2_000),
+    };
+    const idempotencyKey = `unicode-boundary-key-${runId}`;
+    const first = await repository.submit(
+      { organizationId },
+      propertyId,
+      input(`unicode-boundary-${runId}`, exactBoundaries),
+      publicOptions(idempotencyKey),
+    );
+
+    expect(first.guestName).toBe(exactBoundaries.guestName);
+    expect(first.guestEmail).toBe(exactBoundaries.guestEmail);
+    expect(first.message).toBe(exactBoundaries.message);
+    expect(first.requestFingerprint).toMatch(/^[a-f0-9]{64}$/u);
+
+    const retry = await repository.submit(
+      { organizationId },
+      propertyId,
+      input(`unicode-boundary-retry-${runId}`, exactBoundaries),
+      publicOptions(idempotencyKey),
+    );
+    expect(retry.id).toBe(first.id);
+    expect(retry.requestFingerprint).toBe(first.requestFingerprint);
+
+    await expect(
+      repository.submit(
+        { organizationId },
+        propertyId,
+        input(`unicode-boundary-mismatch-${runId}`, {
+          ...exactBoundaries,
+          message: `${astralCodePoint.repeat(1_999)}🚀`,
+        }),
+        publicOptions(idempotencyKey),
+      ),
+    ).rejects.toMatchObject({ code: 'idempotency_key_reuse' });
+
+    const maximumPlusOneInputs: readonly Partial<BookingRequestCreateInput>[] = [
+      { guestName: astralCodePoint.repeat(121) },
+      { guestEmail: `${astralCodePoint.repeat(242)}@example.test` },
+      { message: astralCodePoint.repeat(2_001) },
+    ];
+    for (const [index, overrides] of maximumPlusOneInputs.entries()) {
+      await expect(
+        repository.submit(
+          { organizationId },
+          propertyId,
+          input(`unicode-over-limit-${index}-${runId}`, overrides),
+          publicOptions(`unicode-over-limit-key-${index}-${runId}`),
+        ),
+      ).rejects.toMatchObject({ code: 'booking_request_validation' });
+    }
+
+    const persisted = await pool?.query<{
+      request_count: number;
+      request_fingerprint: string;
+      guest_name_length: number;
+      guest_email_length: number;
+      message_length: number;
+    }>(
+      `
+        SELECT
+          (
+            SELECT count(*)::integer
+            FROM ${table('booking_requests')}
+            WHERE organization_id = $1
+          ) AS request_count,
+          request_fingerprint,
+          char_length(guest_name)::integer AS guest_name_length,
+          char_length(guest_email)::integer AS guest_email_length,
+          char_length(message)::integer AS message_length
+        FROM ${table('booking_requests')}
+        WHERE organization_id = $1 AND idempotency_key = $2
+      `,
+      [organizationId, idempotencyKey],
+    );
+    expect(persisted?.rows).toEqual([
+      {
+        request_count: 1,
+        request_fingerprint: first.requestFingerprint,
+        guest_name_length: 120,
+        guest_email_length: 254,
+        message_length: 2_000,
+      },
+    ]);
+  });
+
   it('rejects idempotency reuse when the immutable quote snapshot changes', async () => {
     await repository.submit({ organizationId }, propertyId, input(`quote-key-${runId}`), {
       idempotencyKey: 'quote-key',
@@ -384,6 +482,687 @@ describe('PostgreSQL request-to-book lifecycle', () => {
     ).rejects.toMatchObject({ code: 'idempotency_key_reuse' });
   });
 
+  it.each([
+    ['arrival', '2026-08-11'],
+    ['departure', '2026-08-13'],
+  ] as const)(
+    'classifies a request row with a mismatched %s quote date as database corruption',
+    async (dateColumn, changedDate) => {
+      const saved = await repository.submit(
+        { organizationId },
+        propertyId,
+        input(`corrupt-${dateColumn}-${runId}`),
+        { idempotencyKey: `corrupt-${dateColumn}-key-${runId}` },
+      );
+      await pool?.query(
+        `UPDATE ${table('booking_requests')} SET ${dateColumn} = $2::date WHERE request_id = $1`,
+        [saved.id, changedDate],
+      );
+
+      await expect(repository.find({ organizationId }, propertyId, saved.id)).rejects.toMatchObject(
+        {
+          code: 'database_corruption',
+        },
+      );
+    },
+  );
+
+  it('baselines checksums and scopes pending legacy hold repair during the 009 to 012 upgrade', async () => {
+    const upgradeSchema = `request_lifecycle_upgrade_test_${runId}`;
+    const upgradeTable = (name: string): string => `"${upgradeSchema}"."${name}"`;
+    const temporaryMigrationDirectory = await mkdtemp(
+      join(tmpdir(), `booking-engine-migrations-${runId}-`),
+    );
+    const authoritativeMigrationDirectory = new URL(
+      '../../packages/database-postgres/migrations/',
+      import.meta.url,
+    );
+    let upgradeDatabase: PostgresDatabasePort | undefined;
+
+    try {
+      upgradeDatabase = createPostgresDatabase({
+        connectionString,
+        schema: upgradeSchema,
+      });
+      const migrationFilesThrough009 = MIGRATION_FILES.slice(0, 9);
+      await Promise.all(
+        MIGRATION_FILES.map((migrationFile) =>
+          copyFile(
+            new URL(migrationFile, authoritativeMigrationDirectory),
+            join(temporaryMigrationDirectory, migrationFile),
+          ),
+        ),
+      );
+      await runMigrationsFromDirectory(
+        upgradeDatabase,
+        temporaryMigrationDirectory,
+        migrationFilesThrough009,
+      );
+      await pool?.query(`ALTER TABLE ${upgradeTable('schema_migrations')} DROP COLUMN checksum`);
+
+      const upgradeOrganizations = createPostgresOrganizationRepository(upgradeDatabase);
+      const upgradeProperties = createPostgresPropertyRepository(upgradeDatabase);
+      const upgradeRates = createPostgresRateRepository(upgradeDatabase);
+      const sameOrganizationForeignPropertyId = `foreign-property-${runId}`;
+      await upgradeOrganizations.create({ id: organizationId, name: 'Lifecycle Upgrade Tenant' });
+      await upgradeOrganizations.create({
+        id: otherOrganizationId,
+        name: 'Foreign Lifecycle Upgrade Tenant',
+      });
+      await upgradeProperties.create({ organizationId }, makeProperty(propertyId));
+      await upgradeProperties.create(
+        { organizationId },
+        makeProperty(sameOrganizationForeignPropertyId),
+      );
+      await upgradeProperties.create(
+        { organizationId: otherOrganizationId },
+        makeProperty(propertyId),
+      );
+      await upgradeRates.saveRatePlan({ organizationId }, propertyId, {
+        currency: 'EUR',
+        baseNightlyRateMinor: 12500,
+        cleaningFeeMinor: 3500,
+        minimumStayNights: 2,
+      });
+      const upgradeQuote = await upgradeRates.quote({ organizationId }, propertyId, {
+        arrival: '2026-08-10',
+        departure: '2026-08-12',
+      });
+      const dateMismatchRequestQuote = await upgradeRates.quote({ organizationId }, propertyId, {
+        arrival: '2026-08-14',
+        departure: '2026-08-16',
+      });
+      const dateMismatchHoldQuote = await upgradeRates.quote({ organizationId }, propertyId, {
+        arrival: '2026-08-16',
+        departure: '2026-08-18',
+      });
+      const activeHoldQuote = await upgradeRates.quote({ organizationId }, propertyId, {
+        arrival: '2026-08-20',
+        departure: '2026-08-22',
+      });
+      const releasedHoldQuote = await upgradeRates.quote({ organizationId }, propertyId, {
+        arrival: '2026-08-24',
+        departure: '2026-08-26',
+      });
+      const nonHoldQuote = await upgradeRates.quote({ organizationId }, propertyId, {
+        arrival: '2026-08-28',
+        departure: '2026-08-30',
+      });
+      const approvedOccupancyQuote = await upgradeRates.quote({ organizationId }, propertyId, {
+        arrival: '2026-09-01',
+        departure: '2026-09-03',
+      });
+      const upgradeInput = (
+        id: string,
+        overrides: Partial<BookingRequestCreateInput> = {},
+      ): BookingRequestCreateInput => ({
+        id,
+        arrival: upgradeQuote.arrival,
+        departure: upgradeQuote.departure,
+        guestCount: 2,
+        guestName: 'Ada Lovelace',
+        guestEmail: 'ada@example.test',
+        message: 'A quiet stay, please.',
+        quote: upgradeQuote,
+        ...overrides,
+      });
+      const insertLegacyRequest = async (
+        requestId: string,
+        idempotencyKey: string,
+        holdRecordId: string | null,
+        holdExpiresAt: string,
+        quote: QuoteBreakdown,
+        status: 'approved' | 'pending' = 'pending',
+      ): Promise<void> => {
+        const requestFingerprint = createHash('md5').update(requestId).digest('hex');
+        await pool?.query(
+          `
+            INSERT INTO ${upgradeTable('booking_requests')} (
+              organization_id, property_id, request_id, arrival, departure,
+              guest_count, guest_name, guest_email, message, status, quote_json,
+              idempotency_key, request_fingerprint,
+              hold_record_id, hold_expires_at, created_at, updated_at
+            )
+            VALUES (
+              $1, $2, $3, $4::date, $5::date, $6, $7, $8, $9, $10, $11::jsonb,
+              $12, $13, $14, $15, $16, $16
+            )
+          `,
+          [
+            organizationId,
+            propertyId,
+            requestId,
+            quote.arrival,
+            quote.departure,
+            2,
+            'Ada Lovelace',
+            'ada@example.test',
+            'A quiet stay, please.',
+            status,
+            JSON.stringify(quote),
+            idempotencyKey,
+            requestFingerprint,
+            holdRecordId,
+            holdExpiresAt,
+            now,
+          ],
+        );
+      };
+      const legacyRequestId = `legacy-${runId}`;
+      const legacyKey = `legacy-key-${runId}`;
+      const phantomHoldRecordId = `phantom-hold-${runId}`;
+      const activeHoldRequestId = `active-legacy-${runId}`;
+      const activeHoldRecordId = `active-hold-${runId}`;
+      const activeHoldExpiresAt = '2026-08-01T00:30:00.000Z';
+      const dateMismatchRequestId = `date-mismatch-legacy-${runId}`;
+      const dateMismatchHoldRecordId = `date-mismatch-hold-${runId}`;
+      const dateMismatchHoldExpiresAt = '2026-08-01T00:40:00.000Z';
+      const releasedHoldRequestId = `released-legacy-${runId}`;
+      const releasedHoldRecordId = `released-hold-${runId}`;
+      const releasedHoldExpiresAt = '2026-08-01T00:20:00.000Z';
+      const nonHoldRequestId = `non-hold-legacy-${runId}`;
+      const nonHoldRecordId = `non-hold-${runId}`;
+      const foreignHoldExpiresAt = '2026-08-01T00:45:00.000Z';
+      const approvedRequestId = `approved-legacy-${runId}`;
+      const approvedHoldExpiresAt = '2026-08-01T00:35:00.000Z';
+      const publicPendingRequestId = `public-pending-${runId}`;
+      const publicPendingExpiresAt = '2026-08-01T00:50:00.000Z';
+      await insertLegacyRequest(
+        legacyRequestId,
+        legacyKey,
+        phantomHoldRecordId,
+        '2026-08-01T00:15:00.000Z',
+        upgradeQuote,
+      );
+      await insertLegacyRequest(
+        activeHoldRequestId,
+        `active-legacy-key-${runId}`,
+        activeHoldRecordId,
+        activeHoldExpiresAt,
+        activeHoldQuote,
+      );
+      await insertLegacyRequest(
+        dateMismatchRequestId,
+        `date-mismatch-legacy-key-${runId}`,
+        dateMismatchHoldRecordId,
+        dateMismatchHoldExpiresAt,
+        dateMismatchRequestQuote,
+      );
+      await insertLegacyRequest(
+        releasedHoldRequestId,
+        `released-legacy-key-${runId}`,
+        releasedHoldRecordId,
+        releasedHoldExpiresAt,
+        releasedHoldQuote,
+      );
+      await insertLegacyRequest(
+        nonHoldRequestId,
+        `non-hold-legacy-key-${runId}`,
+        nonHoldRecordId,
+        '2026-08-01T00:25:00.000Z',
+        nonHoldQuote,
+      );
+      await insertLegacyRequest(
+        publicPendingRequestId,
+        `public-pending-key-${runId}`,
+        null,
+        publicPendingExpiresAt,
+        upgradeQuote,
+      );
+      await insertLegacyRequest(
+        approvedRequestId,
+        `approved-legacy-key-${runId}`,
+        approvedRequestId,
+        approvedHoldExpiresAt,
+        approvedOccupancyQuote,
+        'approved',
+      );
+      await pool?.query(
+        `
+          INSERT INTO ${upgradeTable('availability_blocks')} (
+            organization_id, property_id, record_id, block_kind, status, stay, expires_at
+          )
+          VALUES
+            ($1, $2, $3, 'hold', 'active', daterange($4::date, $5::date, '[)'), $6),
+            ($1, $2, $7, 'hold', 'released', daterange($8::date, $9::date, '[)'), $10),
+            ($1, $2, $11, 'manual', 'active', daterange($12::date, $13::date, '[)'), NULL),
+            ($1, $2, $14, 'occupancy', 'active', daterange($15::date, $16::date, '[)'), NULL),
+            ($1, $17, $18, 'hold', 'active', daterange($19::date, $20::date, '[)'), $21),
+            ($22, $2, $18, 'hold', 'active', daterange($19::date, $20::date, '[)'), $21),
+            ($1, $2, $23, 'hold', 'active', daterange($24::date, $25::date, '[)'), $26)
+        `,
+        [
+          organizationId,
+          propertyId,
+          activeHoldRecordId,
+          activeHoldQuote.arrival,
+          activeHoldQuote.departure,
+          activeHoldExpiresAt,
+          releasedHoldRecordId,
+          releasedHoldQuote.arrival,
+          releasedHoldQuote.departure,
+          releasedHoldExpiresAt,
+          nonHoldRecordId,
+          nonHoldQuote.arrival,
+          nonHoldQuote.departure,
+          approvedRequestId,
+          approvedOccupancyQuote.arrival,
+          approvedOccupancyQuote.departure,
+          sameOrganizationForeignPropertyId,
+          phantomHoldRecordId,
+          upgradeQuote.arrival,
+          upgradeQuote.departure,
+          foreignHoldExpiresAt,
+          otherOrganizationId,
+          dateMismatchHoldRecordId,
+          dateMismatchHoldQuote.arrival,
+          dateMismatchHoldQuote.departure,
+          dateMismatchHoldExpiresAt,
+        ],
+      );
+
+      const stagedMigrations = await pool?.query<{ id: string }>(
+        `SELECT id FROM ${upgradeTable('schema_migrations')} ORDER BY id`,
+      );
+      expect(stagedMigrations?.rows.map(({ id }) => id)).toEqual(migrationFilesThrough009);
+      const stagedRequest = await pool?.query<{
+        hold_expires_at: Date | null;
+        hold_record_id: string | null;
+      }>(
+        `
+          SELECT hold_record_id, hold_expires_at
+          FROM ${upgradeTable('booking_requests')}
+          WHERE request_id = $1
+        `,
+        [legacyRequestId],
+      );
+      expect(stagedRequest?.rows[0]?.hold_record_id).toBe(phantomHoldRecordId);
+      expect(stagedRequest?.rows[0]?.hold_expires_at).not.toBeNull();
+      const stagedDateMismatchRequest = await pool?.query<{
+        hold_expires_at: Date | null;
+        hold_record_id: string | null;
+      }>(
+        `
+          SELECT hold_record_id, hold_expires_at
+          FROM ${upgradeTable('booking_requests')}
+          WHERE request_id = $1
+        `,
+        [dateMismatchRequestId],
+      );
+      expect(stagedDateMismatchRequest?.rows[0]).toEqual({
+        hold_expires_at: new Date(dateMismatchHoldExpiresAt),
+        hold_record_id: dateMismatchHoldRecordId,
+      });
+      const inventoryRecordIds = [
+        activeHoldRecordId,
+        dateMismatchHoldRecordId,
+        approvedRequestId,
+        releasedHoldRecordId,
+        nonHoldRecordId,
+        phantomHoldRecordId,
+      ];
+      const readInventoryControls = async () =>
+        (
+          await pool?.query<{
+            arrival: string;
+            block_kind: string;
+            departure: string;
+            expires_at: Date | null;
+            organization_id: string;
+            property_id: string;
+            record_id: string;
+            status: string;
+          }>(
+            `
+              SELECT
+                organization_id,
+                property_id,
+                record_id,
+                block_kind,
+                status,
+                lower(stay)::text AS arrival,
+                upper(stay)::text AS departure,
+                expires_at
+              FROM ${upgradeTable('availability_blocks')}
+              WHERE record_id = ANY($1::text[])
+              ORDER BY organization_id, property_id, record_id
+            `,
+            [inventoryRecordIds],
+          )
+        )?.rows;
+      const inventoryBeforeMigration = await readInventoryControls();
+      expect(inventoryBeforeMigration).toHaveLength(7);
+      expect(
+        inventoryBeforeMigration
+          ?.filter(({ record_id }) => record_id === phantomHoldRecordId)
+          .map(({ organization_id, property_id }) => ({ organization_id, property_id })),
+      ).toEqual([
+        {
+          organization_id: organizationId,
+          property_id: sameOrganizationForeignPropertyId,
+        },
+        {
+          organization_id: otherOrganizationId,
+          property_id: propertyId,
+        },
+      ]);
+
+      const migrationStatuses = await runMigrations(upgradeDatabase);
+      expect(migrationStatuses.at(-1)).toEqual({
+        id: '012_request_hold_stay_repair.sql',
+        checksum: '9edeca83ec512db42bcf03a54b02c35ccc57bb7e2c86daaea8d6d68cfe62030a',
+      });
+
+      const expectedBaselines = await Promise.all(
+        migrationFilesThrough009.map(async (id) => ({
+          id,
+          checksum: createHash('sha256')
+            .update(await readFile(new URL(id, authoritativeMigrationDirectory)))
+            .digest('hex'),
+        })),
+      );
+      const baselinedMigrations = await pool?.query<{
+        checksum: string | null;
+        id: string;
+      }>(
+        `
+          SELECT id, checksum
+          FROM ${upgradeTable('schema_migrations')}
+          WHERE id = ANY($1::text[])
+          ORDER BY id
+        `,
+        [migrationFilesThrough009],
+      );
+      expect(baselinedMigrations?.rows).toEqual(expectedBaselines);
+      const checksumColumn = await pool?.query<{ is_nullable: 'NO' | 'YES' }>(
+        `
+          SELECT is_nullable
+          FROM information_schema.columns
+          WHERE table_schema = $1
+            AND table_name = 'schema_migrations'
+            AND column_name = 'checksum'
+        `,
+        [upgradeSchema],
+      );
+      expect(checksumColumn?.rows[0]).toEqual({ is_nullable: 'NO' });
+      await expect(
+        pool?.query(
+          `UPDATE ${upgradeTable('schema_migrations')} SET checksum = NULL WHERE id = $1`,
+          [migrationFilesThrough009[0]],
+        ),
+      ).rejects.toMatchObject({ code: '23502' });
+
+      const clearedRequestIds = [
+        dateMismatchRequestId,
+        legacyRequestId,
+        releasedHoldRequestId,
+        nonHoldRequestId,
+      ].sort();
+      const repairedRequests = await pool?.query<{
+        fingerprint_version: string;
+        hold_expires_at: Date | null;
+        hold_record_id: string | null;
+        request_id: string;
+      }>(
+        `
+          SELECT request_id, fingerprint_version, hold_record_id, hold_expires_at
+          FROM ${upgradeTable('booking_requests')}
+          WHERE request_id = ANY($1::text[])
+          ORDER BY request_id
+        `,
+        [clearedRequestIds],
+      );
+      expect(repairedRequests?.rows).toEqual(
+        clearedRequestIds.map((request_id) => ({
+          fingerprint_version: 'legacy-md5-request-id',
+          hold_expires_at: null,
+          hold_record_id: null,
+          request_id,
+        })),
+      );
+      const preservedRequest = await pool?.query<{
+        fingerprint_version: string;
+        hold_expires_at: Date | null;
+        hold_record_id: string | null;
+      }>(
+        `
+          SELECT fingerprint_version, hold_record_id, hold_expires_at
+          FROM ${upgradeTable('booking_requests')}
+          WHERE request_id = $1
+        `,
+        [activeHoldRequestId],
+      );
+      expect(preservedRequest?.rows[0]).toEqual({
+        fingerprint_version: 'legacy-md5-request-id',
+        hold_expires_at: new Date(activeHoldExpiresAt),
+        hold_record_id: activeHoldRecordId,
+      });
+      const preservedPublicPendingRequest = await pool?.query<{
+        hold_expires_at: Date | null;
+        hold_record_id: string | null;
+        status: string;
+      }>(
+        `
+          SELECT status, hold_record_id, hold_expires_at
+          FROM ${upgradeTable('booking_requests')}
+          WHERE request_id = $1
+        `,
+        [publicPendingRequestId],
+      );
+      expect(preservedPublicPendingRequest?.rows[0]).toEqual({
+        hold_expires_at: new Date(publicPendingExpiresAt),
+        hold_record_id: null,
+        status: 'pending',
+      });
+      const preservedTerminalRequest = await pool?.query<{
+        hold_expires_at: Date | null;
+        hold_record_id: string | null;
+        status: string;
+      }>(
+        `
+          SELECT status, hold_record_id, hold_expires_at
+          FROM ${upgradeTable('booking_requests')}
+          WHERE request_id = $1
+        `,
+        [approvedRequestId],
+      );
+      expect(preservedTerminalRequest?.rows[0]).toEqual({
+        hold_expires_at: new Date(approvedHoldExpiresAt),
+        hold_record_id: approvedRequestId,
+        status: 'approved',
+      });
+      expect(await readInventoryControls()).toEqual(inventoryBeforeMigration);
+      const repairMigrations = await pool?.query<{ checksum: string; id: string }>(
+        `
+          SELECT id, checksum
+          FROM ${upgradeTable('schema_migrations')}
+          WHERE id = ANY($1::text[])
+          ORDER BY id
+        `,
+        [['010_request_lifecycle_legacy_repair.sql', '012_request_hold_stay_repair.sql']],
+      );
+      expect(repairMigrations?.rows).toEqual(
+        migrationStatuses.filter(
+          ({ id }) =>
+            id === '010_request_lifecycle_legacy_repair.sql' ||
+            id === '012_request_hold_stay_repair.sql',
+        ),
+      );
+
+      const upgradeRepository = createPostgresBookingRequestRepository(upgradeDatabase, {
+        clock: () => new Date(clockNow),
+      });
+      const approvedDateMismatch = await upgradeRepository.approve(
+        { organizationId },
+        propertyId,
+        dateMismatchRequestId,
+      );
+      expect(approvedDateMismatch).toMatchObject({
+        arrival: dateMismatchRequestQuote.arrival,
+        departure: dateMismatchRequestQuote.departure,
+        holdRecordId: dateMismatchRequestId,
+        status: 'approved',
+      });
+      const mismatchedHoldAfterApproval = await pool?.query<{
+        arrival: string;
+        block_kind: string;
+        departure: string;
+        expires_at: Date | null;
+        status: string;
+      }>(
+        `
+          SELECT
+            block_kind,
+            status,
+            lower(stay)::text AS arrival,
+            upper(stay)::text AS departure,
+            expires_at
+          FROM ${upgradeTable('availability_blocks')}
+          WHERE organization_id = $1 AND property_id = $2 AND record_id = $3
+        `,
+        [organizationId, propertyId, dateMismatchHoldRecordId],
+      );
+      expect(mismatchedHoldAfterApproval?.rows[0]).toEqual({
+        arrival: dateMismatchHoldQuote.arrival,
+        block_kind: 'hold',
+        departure: dateMismatchHoldQuote.departure,
+        expires_at: new Date(dateMismatchHoldExpiresAt),
+        status: 'active',
+      });
+      const approvedDateMismatchOccupancy = await pool?.query<{
+        arrival: string;
+        block_kind: string;
+        departure: string;
+        status: string;
+      }>(
+        `
+          SELECT
+            block_kind,
+            status,
+            lower(stay)::text AS arrival,
+            upper(stay)::text AS departure
+          FROM ${upgradeTable('availability_blocks')}
+          WHERE organization_id = $1 AND property_id = $2 AND record_id = $3
+        `,
+        [organizationId, propertyId, dateMismatchRequestId],
+      );
+      expect(approvedDateMismatchOccupancy?.rows[0]).toEqual({
+        arrival: dateMismatchRequestQuote.arrival,
+        block_kind: 'occupancy',
+        departure: dateMismatchRequestQuote.departure,
+        status: 'active',
+      });
+      const readLegacyFingerprintState = async () =>
+        (
+          await pool?.query<{
+            fingerprint_version: string;
+            request_fingerprint: string;
+          }>(
+            `
+              SELECT fingerprint_version, request_fingerprint
+              FROM ${upgradeTable('booking_requests')}
+              WHERE request_id = $1
+            `,
+            [legacyRequestId],
+          )
+        )?.rows[0];
+      const legacyFingerprintState = await readLegacyFingerprintState();
+      expect(legacyFingerprintState).toEqual({
+        fingerprint_version: 'legacy-md5-request-id',
+        request_fingerprint: createHash('md5').update(legacyRequestId).digest('hex'),
+      });
+      await expect(
+        upgradeRepository.submit(
+          { organizationId },
+          propertyId,
+          upgradeInput(`legacy-changed-before-upgrade-${runId}`, { guestCount: 1 }),
+          { idempotencyKey: legacyKey, deferInventory: true },
+        ),
+      ).rejects.toMatchObject({ code: 'idempotency_key_reuse' });
+      expect(await readLegacyFingerprintState()).toEqual(legacyFingerprintState);
+
+      const equalRetryInput = upgradeInput(`legacy-retry-${runId}`);
+      const canonicalFingerprint = createHash('sha256')
+        .update(
+          JSON.stringify([
+            propertyId,
+            equalRetryInput.arrival,
+            equalRetryInput.departure,
+            equalRetryInput.guestCount,
+            equalRetryInput.guestName,
+            equalRetryInput.guestEmail,
+            equalRetryInput.message,
+            equalRetryInput.quote,
+          ]),
+        )
+        .digest('hex');
+      expect(canonicalFingerprint).toMatch(/^[a-f0-9]{64}$/u);
+
+      const retried = await upgradeRepository.submit(
+        { organizationId },
+        propertyId,
+        equalRetryInput,
+        { idempotencyKey: legacyKey, deferInventory: true },
+      );
+      expect(retried).toMatchObject({
+        id: legacyRequestId,
+        requestFingerprint: canonicalFingerprint,
+        status: 'pending',
+        fingerprintVersion: 'sha256-v1',
+      });
+      expect(retried.holdRecordId).toBeUndefined();
+      const upgradedFingerprintState = {
+        fingerprint_version: 'sha256-v1',
+        request_fingerprint: canonicalFingerprint,
+      };
+      expect(await readLegacyFingerprintState()).toEqual(upgradedFingerprintState);
+
+      const stableRetry = await upgradeRepository.submit(
+        { organizationId },
+        propertyId,
+        equalRetryInput,
+        { idempotencyKey: legacyKey, deferInventory: true },
+      );
+      expect(stableRetry).toEqual(retried);
+      expect(await readLegacyFingerprintState()).toEqual(upgradedFingerprintState);
+
+      await expect(
+        upgradeRepository.submit(
+          { organizationId },
+          propertyId,
+          upgradeInput(`legacy-changed-after-upgrade-${runId}`, { guestCount: 1 }),
+          { idempotencyKey: legacyKey, deferInventory: true },
+        ),
+      ).rejects.toMatchObject({ code: 'idempotency_key_reuse' });
+
+      expect(await readLegacyFingerprintState()).toEqual(upgradedFingerprintState);
+      await expect(
+        upgradeRepository.approve({ organizationId }, propertyId, legacyRequestId),
+      ).resolves.toMatchObject({
+        status: 'approved',
+      });
+      const occupancy = await pool?.query<{ count: string }>(
+        `
+          SELECT count(*)::text AS count
+          FROM ${upgradeTable('availability_blocks')}
+          WHERE record_id = $1 AND block_kind = 'occupancy' AND status = 'active'
+        `,
+        [legacyRequestId],
+      );
+      expect(occupancy?.rows[0]?.count).toBe('1');
+    } finally {
+      try {
+        await upgradeDatabase?.close();
+      } finally {
+        try {
+          await pool?.query(`DROP SCHEMA IF EXISTS "${upgradeSchema}" CASCADE`);
+        } finally {
+          await rm(temporaryMigrationDirectory, { force: true, recursive: true });
+        }
+      }
+    }
+  });
+
   it('rejects malformed direct submissions with a bounded persistence error', async () => {
     await expect(
       repository.submit(
@@ -399,7 +1178,7 @@ describe('PostgreSQL request-to-book lifecycle', () => {
         { organizationId },
         propertyId,
         input(`malformed-options-${runId}`),
-        null as unknown as string,
+        null as unknown as { readonly idempotencyKey: string },
       ),
     ).rejects.toMatchObject({ code: 'booking_request_validation' });
 

@@ -5,12 +5,9 @@
   "type": "module",
   "dependencies": {
     "@booking-engine/booking-core": "workspace:*",
-    "@booking-engine/channel-calendar": "workspace:*",
     "@booking-engine/channel-ical": "workspace:*",
     "@booking-engine/database-postgres": "workspace:*",
-    "@booking-engine/notifications": "workspace:*",
     "@booking-engine/payments": "workspace:*",
-    "@booking-engine/payments-stripe": "workspace:*",
     "@booking-engine/sdk-typescript": "workspace:*"
   }
 }

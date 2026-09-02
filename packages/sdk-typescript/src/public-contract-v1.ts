@@ -1,17 +1,50 @@
+import {
+  countUnicodeCodePointsV1,
+  type PUBLIC_API_ERROR_CODES_V1,
+  PUBLIC_BOOKING_TEXT_CONSTRAINTS_V1,
+  type PUBLIC_BOOKING_REQUEST_STATUSES_V1,
+  PUBLIC_IDEMPOTENCY_KEY_PATTERN_V1,
+  PUBLIC_IDENTIFIER_PATTERN_V1,
+  PUBLIC_NONBLANK_CONTROL_SAFE_TEXT_PATTERN_V1,
+  PUBLIC_PROPERTY_RESPONSE_BOUNDS_V1,
+  PUBLIC_VALIDATION_ISSUE_BOUNDS_V1,
+  PUBLIC_VALIDATION_ISSUE_FIELD_PATTERN_V1,
+  type PUBLIC_VALIDATION_CODES_V1,
+} from './contract-constraints-v1.js';
+
+export { PUBLIC_MINOR_AMOUNT_MAXIMUM_V1 } from './contract-constraints-v1.js';
+
 /** Public contract versions are explicit so consumers do not depend on private shapes. */
 export type PublicApiVersionV1 = 'v1';
 
 export const PUBLIC_API_VERSION_V1: PublicApiVersionV1 = 'v1';
 
+const GUEST_EMAIL_TEXT_BOUNDS_V1 = { minLength: 1, maxLength: 254 } as const;
+
 export const PUBLIC_BOOKING_LIMITS_V1 = Object.freeze({
-  maximumIdentifierLength: 64,
+  maximumIdentifierLength: PUBLIC_PROPERTY_RESPONSE_BOUNDS_V1.id.maxLength,
   maximumStayNights: 3660,
-  maximumGuestCount: 200,
-  maximumGuestNameLength: 120,
-  maximumGuestEmailLength: 254,
-  maximumMessageLength: 2000,
-  maximumIdempotencyKeyLength: 128,
+  maximumGuestCount: PUBLIC_PROPERTY_RESPONSE_BOUNDS_V1.maximumGuests.maximum,
+  maximumGuestNameLength: PUBLIC_BOOKING_TEXT_CONSTRAINTS_V1.guestName.maxLength,
+  maximumGuestEmailLength: GUEST_EMAIL_TEXT_BOUNDS_V1.maxLength,
+  maximumMessageLength: PUBLIC_BOOKING_TEXT_CONSTRAINTS_V1.message.maxLength,
+  maximumIdempotencyKeyLength: PUBLIC_BOOKING_TEXT_CONSTRAINTS_V1.idempotencyKey.maxLength,
 });
+const publicIdentifierPatternV1 = new RegExp(PUBLIC_IDENTIFIER_PATTERN_V1, 'u');
+const publicValidationIssueFieldPatternV1 = new RegExp(
+  PUBLIC_VALIDATION_ISSUE_FIELD_PATTERN_V1,
+  'u',
+);
+const publicNonblankControlSafeTextPatternV1 = new RegExp(
+  PUBLIC_NONBLANK_CONTROL_SAFE_TEXT_PATTERN_V1,
+  'u',
+);
+const publicIdempotencyKeyPatternV1 = new RegExp(PUBLIC_IDEMPOTENCY_KEY_PATTERN_V1, 'u');
+const UNKNOWN_FIELD_ISSUE_FIELD_V1 = 'request';
+const UNKNOWN_FIELD_ISSUE_MESSAGE_V1 =
+  'request contains a field that is not part of the public contract.';
+const PROPERTY_ID_ISSUE_FIELD_V1 = 'propertyId';
+const INVALID_PROPERTY_ID_ISSUE_MESSAGE_V1 = 'propertyId must be a valid public identifier.';
 
 export type PublicPropertyTypeV1 =
   | 'apartment'
@@ -48,20 +81,7 @@ export interface PublicPropertyConfigurationV1 {
 
 export type PublicPropertyV1 = PublicPropertyConfigurationV1;
 
-export type PublicValidationCodeV1 =
-  | 'invalid_input'
-  | 'missing_field'
-  | 'invalid_string'
-  | 'empty_string'
-  | 'string_too_long'
-  | 'invalid_identifier'
-  | 'invalid_date'
-  | 'non_positive_length'
-  | 'interval_too_long'
-  | 'invalid_guest_count'
-  | 'invalid_email'
-  | 'invalid_value'
-  | 'unknown_field';
+export type PublicValidationCodeV1 = (typeof PUBLIC_VALIDATION_CODES_V1)[number];
 
 export interface PublicValidationIssueV1 {
   readonly field: string;
@@ -73,15 +93,7 @@ export type PublicValidationResultV1<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly errors: readonly PublicValidationIssueV1[] };
 
-export type PublicApiErrorCodeV1 =
-  | 'validation_failed'
-  | 'property_not_found'
-  | 'quote_unavailable'
-  | 'stay_unavailable'
-  | 'request_conflict'
-  | 'route_not_found'
-  | 'method_not_allowed'
-  | 'internal_error';
+export type PublicApiErrorCodeV1 = (typeof PUBLIC_API_ERROR_CODES_V1)[number];
 
 export interface PublicApiErrorV1 {
   readonly code: PublicApiErrorCodeV1;
@@ -135,9 +147,7 @@ export interface PublicRequestToBookInputV1 extends PublicStayInputV1 {
   readonly message?: string;
 }
 
-export type PublicBookingRequestInputV1 = PublicRequestToBookInputV1;
-
-export type PublicBookingRequestStatusV1 = 'pending' | 'approved' | 'rejected' | 'expired';
+export type PublicBookingRequestStatusV1 = (typeof PUBLIC_BOOKING_REQUEST_STATUSES_V1)[number];
 
 /** The request response contains no guest contact fields or tenant identifiers. */
 export interface PublicRequestToBookV1 extends PublicStayV1 {
@@ -152,8 +162,6 @@ export interface PublicRequestToBookV1 extends PublicStayV1 {
 export interface PublicRequestToBookOptionsV1 {
   readonly idempotencyKey: string;
 }
-
-export type PublicBookingRequestV1 = PublicRequestToBookV1;
 
 interface ParsedDateV1 {
   readonly dayNumber: number;
@@ -194,6 +202,26 @@ function issue(
   return { field, code, message };
 }
 
+function normalizeValidationIssueField(field: unknown): string | undefined {
+  if (typeof field !== 'string') {
+    return undefined;
+  }
+  const fieldBounds = PUBLIC_VALIDATION_ISSUE_BOUNDS_V1.field;
+  const length = countUnicodeCodePointsV1(field, fieldBounds.maxLength);
+  return length >= fieldBounds.minLength &&
+    length <= fieldBounds.maxLength &&
+    publicValidationIssueFieldPatternV1.test(field)
+    ? field
+    : undefined;
+}
+
+function invalidPropertyIdIssue(field: unknown, requirement: string): PublicValidationIssueV1 {
+  const normalizedField = normalizeValidationIssueField(field);
+  return normalizedField === undefined
+    ? issue(PROPERTY_ID_ISSUE_FIELD_V1, 'invalid_identifier', INVALID_PROPERTY_ID_ISSUE_MESSAGE_V1)
+    : issue(normalizedField, 'invalid_identifier', `${normalizedField} ${requirement}`);
+}
+
 function parseDate(
   value: unknown,
   field: string,
@@ -222,6 +250,17 @@ function parseDate(
   return { parsed: { value, dayNumber: daysFromCivil(year, month, day) } };
 }
 
+function unknownFieldIssue(field: string): PublicValidationIssueV1 {
+  const normalizedField = normalizeValidationIssueField(field);
+  return normalizedField === undefined
+    ? issue(UNKNOWN_FIELD_ISSUE_FIELD_V1, 'unknown_field', UNKNOWN_FIELD_ISSUE_MESSAGE_V1)
+    : issue(
+        normalizedField,
+        'unknown_field',
+        `${normalizedField} is not part of the public contract.`,
+      );
+}
+
 function validateRecord(
   input: unknown,
   allowedFields: readonly string[],
@@ -233,38 +272,44 @@ function validateRecord(
   }
   const errors = Object.keys(input)
     .filter((field) => !allowedFields.includes(field))
-    .map((field) => issue(field, 'unknown_field', `${field} is not part of the public contract.`));
+    .map(unknownFieldIssue);
   return errors.length === 0 ? { record: input } : { errors };
 }
 
 export function validatePublicPropertyIdV1(
   value: unknown,
-  field = 'propertyId',
+  field = PROPERTY_ID_ISSUE_FIELD_V1,
 ): PublicValidationResultV1<string> {
-  if (
-    typeof value !== 'string' ||
-    value.length === 0 ||
-    value.length > PUBLIC_BOOKING_LIMITS_V1.maximumIdentifierLength
-  ) {
+  if (typeof value !== 'string') {
     return {
       ok: false,
       errors: [
-        issue(
+        invalidPropertyIdIssue(
           field,
-          'invalid_identifier',
-          `${field} must be a non-empty identifier of at most 64 characters.`,
+          `must be a non-empty identifier of at most ${PUBLIC_BOOKING_LIMITS_V1.maximumIdentifierLength} characters.`,
         ),
       ],
     };
   }
-  if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/u.test(value)) {
+  const length = countUnicodeCodePointsV1(value, PUBLIC_BOOKING_LIMITS_V1.maximumIdentifierLength);
+  if (length === 0 || length > PUBLIC_BOOKING_LIMITS_V1.maximumIdentifierLength) {
     return {
       ok: false,
       errors: [
-        issue(
+        invalidPropertyIdIssue(
           field,
-          'invalid_identifier',
-          `${field} must contain only letters, numbers, underscores, and hyphens.`,
+          `must be a non-empty identifier of at most ${PUBLIC_BOOKING_LIMITS_V1.maximumIdentifierLength} characters.`,
+        ),
+      ],
+    };
+  }
+  if (!publicIdentifierPatternV1.test(value)) {
+    return {
+      ok: false,
+      errors: [
+        invalidPropertyIdIssue(
+          field,
+          'must contain only letters, numbers, underscores, and hyphens.',
         ),
       ],
     };
@@ -334,7 +379,7 @@ export const validatePublicQuoteRequestV1 = validatePublicAvailabilityRequestV1;
 function validateBoundedText(
   value: unknown,
   field: string,
-  maximum: number,
+  bounds: { readonly minLength: number; readonly maxLength: number },
   required: boolean,
 ): PublicValidationIssueV1 | undefined {
   if (value === undefined && !required) {
@@ -343,26 +388,30 @@ function validateBoundedText(
   if (typeof value !== 'string') {
     return issue(field, 'invalid_string', `${field} must be a string.`);
   }
-  if (value.trim().length === 0) {
+  const length = countUnicodeCodePointsV1(value, bounds.maxLength);
+  if (length < bounds.minLength || value.trim().length === 0) {
     return issue(field, 'empty_string', `${field} must not be empty.`);
   }
-  if (value.length > maximum) {
-    return issue(field, 'string_too_long', `${field} must be at most ${maximum} characters.`);
+  if (length > bounds.maxLength) {
+    return issue(
+      field,
+      'string_too_long',
+      `${field} must be at most ${bounds.maxLength} characters.`,
+    );
   }
-  if (
-    [...value].some((character) => {
-      const codePoint = character.codePointAt(0) ?? 0;
-      return codePoint < 32 || codePoint === 127;
-    })
-  ) {
-    return issue(field, 'invalid_string', `${field} must not contain control characters.`);
+  if (!publicNonblankControlSafeTextPatternV1.test(value)) {
+    return issue(
+      field,
+      'invalid_string',
+      `${field} must contain complete Unicode characters and no control characters.`,
+    );
   }
   return undefined;
 }
 
 export function validatePublicRequestToBookV1(
   input: unknown,
-): PublicValidationResultV1<PublicRequestToBookInputV1 & PublicStayV1> {
+): PublicValidationResultV1<PublicRequestToBookInputV1> {
   const validated = validateRecord(input, [
     'arrival',
     'departure',
@@ -398,7 +447,7 @@ export function validatePublicRequestToBookV1(
   const guestNameError = validateBoundedText(
     validated.record['guestName'],
     'guestName',
-    PUBLIC_BOOKING_LIMITS_V1.maximumGuestNameLength,
+    PUBLIC_BOOKING_TEXT_CONSTRAINTS_V1.guestName,
     true,
   );
   if (guestNameError !== undefined) {
@@ -407,7 +456,7 @@ export function validatePublicRequestToBookV1(
   const guestEmailError = validateBoundedText(
     validated.record['guestEmail'],
     'guestEmail',
-    PUBLIC_BOOKING_LIMITS_V1.maximumGuestEmailLength,
+    GUEST_EMAIL_TEXT_BOUNDS_V1,
     true,
   );
   if (guestEmailError !== undefined) {
@@ -421,7 +470,7 @@ export function validatePublicRequestToBookV1(
   const messageError = validateBoundedText(
     validated.record['message'],
     'message',
-    PUBLIC_BOOKING_LIMITS_V1.maximumMessageLength,
+    PUBLIC_BOOKING_TEXT_CONSTRAINTS_V1.message,
     false,
   );
   if (messageError !== undefined) {
@@ -433,7 +482,8 @@ export function validatePublicRequestToBookV1(
   return {
     ok: true,
     value: Object.freeze({
-      ...stay.value,
+      arrival: stay.value.arrival,
+      departure: stay.value.departure,
       guestCount: guestCount as number,
       guestName: validated.record['guestName'] as string,
       guestEmail: validated.record['guestEmail'] as string,
@@ -445,14 +495,12 @@ export function validatePublicRequestToBookV1(
 }
 
 export function validatePublicIdempotencyKeyV1(value: unknown): PublicValidationResultV1<string> {
+  const constraints = PUBLIC_BOOKING_TEXT_CONSTRAINTS_V1.idempotencyKey;
   if (
     typeof value !== 'string' ||
-    value.trim().length === 0 ||
-    value.length > PUBLIC_BOOKING_LIMITS_V1.maximumIdempotencyKeyLength ||
-    [...value].some((character) => {
-      const codePoint = character.codePointAt(0) ?? 0;
-      return codePoint < 32 || codePoint === 127;
-    })
+    value.length < constraints.minLength ||
+    value.length > constraints.maxLength ||
+    !publicIdempotencyKeyPatternV1.test(value)
   ) {
     return {
       ok: false,
@@ -460,12 +508,12 @@ export function validatePublicIdempotencyKeyV1(value: unknown): PublicValidation
         issue(
           'idempotencyKey',
           'invalid_string',
-          `idempotencyKey must be a non-empty string of at most ${PUBLIC_BOOKING_LIMITS_V1.maximumIdempotencyKeyLength} characters.`,
+          `idempotencyKey must be a non-empty visible-ASCII string of at most ${constraints.maxLength} characters.`,
         ),
       ],
     };
   }
-  return { ok: true, value: value.trim() };
+  return { ok: true, value };
 }
 
 export class PublicContractValidationErrorV1 extends Error {

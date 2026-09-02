@@ -1,9 +1,15 @@
+> **Archived verification record:** Historical evidence only. Use the single authoritative
+> [README release checklist](../README.md#development-and-release-gates). The CI workflow and root
+> scripts implement its checks; they do not define a second command list. The former `apps/admin`
+> package and standalone admin listener are removed; use `apps/api` admin views and
+> `createApiHttpServer`.
+
 # Owner authentication and same-domain admin verification
 
 This record covers Kanban card `t_0061cb6e`. The implementation stays in the existing
 modular-monolith HTTP boundary: `apps/api` owns authentication and private admin responses,
-`packages/database-postgres` owns tenant-scoped persistence, and `apps/admin` contains only
-an escaped renderer with its existing SDK-only dependency boundary.
+`packages/database-postgres` owns tenant-scoped persistence, and the server-rendered admin views
+now live under `apps/api`.
 
 ## TDD evidence
 

@@ -19,10 +19,10 @@ import {
 } from '@booking-engine/payments';
 import { createQuoteSnapshot, type QuoteBreakdown } from '@booking-engine/booking-core';
 
-import { PersistenceError, isPostgresError } from '../persistence-errors.js';
-import { lockProperty } from '../property-lock.js';
-import type { PostgresDatabasePort, PostgresTransactionPort } from '../postgres-database.js';
-import { qualifiedTable } from '../sql-identifiers.js';
+import { PersistenceError, isPostgresError } from '../database/errors.js';
+import { lockProperty } from '../database/property-lock.js';
+import type { PostgresDatabasePort, PostgresTransactionPort } from '../database/postgres.js';
+import { qualifiedTable } from '../database/identifiers.js';
 
 export type {
   PaymentCheckoutPreparation,
@@ -954,5 +954,3 @@ export function createPostgresPaymentCheckoutRepository(
 ): PaymentCheckoutRepository {
   return new PostgresPaymentCheckoutRepository(database, options);
 }
-
-export const createPaymentCheckoutRepository = createPostgresPaymentCheckoutRepository;

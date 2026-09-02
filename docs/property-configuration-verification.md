@@ -1,3 +1,8 @@
+> **Archived verification record:** Historical evidence only. Use the single authoritative
+> [README release checklist](../README.md#development-and-release-gates). The CI workflow and root
+> scripts implement its checks; they do not define a second command list. This dated record is not
+> a release checklist.
+
 # Property configuration verification
 
 Date: 2026-07-12
@@ -112,7 +117,7 @@ All commands ran from the worktree root through the pinned Corepack Windows path
 | `corepack.cmd pnpm check:public-boundary`     | pass; one SDK source file audited with no dependencies or workspace imports                                      |
 | `corepack.cmd pnpm test`                      | pass; 3 files and 38 tests                                                                                       |
 | `corepack.cmd pnpm test:integration`          | pass with no test files; no integration coverage claimed                                                         |
-| `corepack.cmd pnpm test:e2e`                  | pass with no test files; no E2E coverage claimed                                                                 |
+| Browser verification (historical)             | No repository E2E script exists; no claim made here.                                                             |
 | `corepack.cmd pnpm build`                     | pass                                                                                                             |
 | `docker compose config`                       | pass; PostgreSQL and Mailpit rendered                                                                            |
 | `git diff --check`                            | pass; Git emitted only the worktree's LF-to-CRLF conversion warnings                                             |

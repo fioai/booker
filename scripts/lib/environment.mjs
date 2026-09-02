@@ -1,6 +1,20 @@
 /* global URL */
 
 const ENVIRONMENTS = new Set(['local', 'test', 'staging', 'production']);
+
+export const DEPLOYMENT_IDENTITY_KEYS = Object.freeze([
+  'BOOKING_ENGINE_ENV',
+  'DATABASE_URL',
+  'DATABASE_SCHEMA',
+  'HOST',
+  'PORT',
+  'BOOKING_ENGINE_ORGANIZATION_ID',
+  'BOOKING_ENGINE_PROPERTY_ID',
+  'ADMIN_ORIGIN',
+  'SECURE_COOKIES',
+  'BOOKING_ENGINE_SAMPLE_DATA',
+  'BOOKING_ENGINE_SAMPLE_PASSWORD',
+]);
 const IDENTIFIER_PATTERN = /^[a-z_][a-z0-9_]*$/u;
 const APP_IDENTIFIER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/u;
 const PORT_MIN = 1;
@@ -200,7 +214,14 @@ export function validateEnvironmentTemplate(text) {
     'POSTGRES_USER',
     'POSTGRES_PASSWORD',
     'DATABASE_URL',
+    'DATABASE_SCHEMA',
     'BOOKING_ENGINE_ENV',
+    'HOST',
+    'PORT',
+    'BOOKING_ENGINE_ORGANIZATION_ID',
+    'BOOKING_ENGINE_PROPERTY_ID',
+    'ADMIN_ORIGIN',
+    'SECURE_COOKIES',
   ];
   const missing = required.filter((name) => !new RegExp('^' + name + '=', 'mu').test(text));
   if (missing.length > 0) {

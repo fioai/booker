@@ -1,8 +1,8 @@
 import type { QueryResultRow } from 'pg';
 
-import { PersistenceError } from '../persistence-errors.js';
-import type { PostgresDatabasePort } from '../postgres-database.js';
-import { qualifiedTable } from '../sql-identifiers.js';
+import { PersistenceError } from '../database/errors.js';
+import type { PostgresDatabasePort } from '../database/postgres.js';
+import { qualifiedTable } from '../database/identifiers.js';
 
 export type BookingOutboxEventType =
   | 'booking_request.submitted'
@@ -37,8 +37,6 @@ export interface BookingOutboxDeliveryEvent {
 export interface BookingOutboxDeliveryPort {
   deliver(event: BookingOutboxDeliveryEvent): Promise<void>;
 }
-
-export type OutboxDeliveryPort = BookingOutboxDeliveryPort;
 
 export interface BookingOutboxRepositoryOptions {
   readonly clock?: () => Date;

@@ -1,3 +1,8 @@
+> **Archived verification record:** Historical evidence only. Use the single authoritative
+> [README release checklist](../README.md#development-and-release-gates). The CI workflow and root
+> scripts implement its checks; they do not define a second command list. This dated record is not
+> a release checklist.
+
 # Public booking contract verification
 
 Date: 2026-07-12

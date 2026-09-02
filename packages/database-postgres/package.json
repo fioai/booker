@@ -17,7 +17,6 @@
     "@booking-engine/booking-core": "workspace:*",
     "@booking-engine/payments": "workspace:*",
     "@booking-engine/channel-ical": "workspace:*",
-    "@booking-engine/sdk-typescript": "workspace:*",
     "pg": "^8.22.0"
   },
   "devDependencies": {

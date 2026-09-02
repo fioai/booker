@@ -1,29 +1,87 @@
 import { randomUUID } from 'node:crypto';
 
-import { Pool } from 'pg';
+import { Pool, type QueryResult, type QueryResultRow } from 'pg';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import type { PropertyConfigurationInput } from '../../packages/booking-core/src/index.js';
 import {
-  createAvailabilityRepository,
-  createOrganizationRepository,
+  createPostgresAvailabilityRepository,
+  createPostgresOrganizationRepository,
   createPostgresDatabase,
   createPostgresPropertyRepository,
-  createRateRepository,
+  createPostgresRateRepository,
   runMigrations,
   type AvailabilityRepository,
   type OrganizationRepository,
   type PostgresDatabasePort,
+  type PostgresTransactionPort,
   type PropertyRepository,
   type RateRepository,
 } from '../../packages/database-postgres/src/index.js';
 
 const connectionString =
   process.env['DATABASE_URL'] ??
-  'postgresql://booking_engine_local:local-only-placeholder@127.0.0.1:5432/booking_engine_local';
+  'postgresql://booking_engine_local:local-only-placeholder@127.0.0.1:15432/booking_engine_local';
 const runId = randomUUID().replaceAll('-', '').slice(0, 12);
 const integrationSchema = `availability_test_${runId}`;
 const table = (name: string): string => `"${integrationSchema}"."${name}"`;
+
+interface TransactionQuery {
+  readonly text: string;
+  readonly values: readonly unknown[] | undefined;
+}
+
+interface TransactionQueryHooks {
+  readonly afterQueryStarted?: (query: TransactionQuery) => Promise<void> | void;
+  readonly afterQuery?: (query: TransactionQuery) => Promise<void> | void;
+}
+
+function createDeferred<T>(): {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T) => void;
+} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
+function wrapTransactionQueries(
+  source: PostgresDatabasePort,
+  hooks: TransactionQueryHooks,
+): PostgresDatabasePort {
+  return {
+    dialect: source.dialect,
+    schema: source.schema,
+    query<Row extends QueryResultRow = QueryResultRow>(
+      text: string,
+      values?: readonly unknown[],
+    ): Promise<QueryResult<Row>> {
+      return source.query<Row>(text, values);
+    },
+    withTransaction<T>(work: (transaction: PostgresTransactionPort) => Promise<T>): Promise<T> {
+      return source.withTransaction((transaction) => {
+        return work({
+          async query<Row extends QueryResultRow = QueryResultRow>(
+            text: string,
+            values?: readonly unknown[],
+          ): Promise<QueryResult<Row>> {
+            const query = { text, values };
+            const resultPromise = transaction.query<Row>(text, values);
+            await hooks.afterQueryStarted?.(query);
+            const result = await resultPromise;
+            await hooks.afterQuery?.(query);
+            return result;
+          },
+        });
+      });
+    },
+    close(): Promise<void> {
+      return source.close();
+    },
+  };
+}
 
 function makeProperty(id: string): PropertyConfigurationInput {
   return {
@@ -63,10 +121,10 @@ describe('PostgreSQL availability, rates, and atomic occupancy', () => {
     await pool.query('SELECT 1');
     database = createPostgresDatabase({ connectionString, schema: integrationSchema });
     await runMigrations(database);
-    organizations = createOrganizationRepository(database);
+    organizations = createPostgresOrganizationRepository(database);
     properties = createPostgresPropertyRepository(database);
-    availability = createAvailabilityRepository(database);
-    rates = createRateRepository(database);
+    availability = createPostgresAvailabilityRepository(database);
+    rates = createPostgresRateRepository(database);
   });
 
   beforeEach(async () => {
@@ -120,6 +178,156 @@ describe('PostgreSQL availability, rates, and atomic occupancy', () => {
     ).rejects.toMatchObject({ code: 'rate_validation' });
   });
 
+  it('holds a rate read snapshot lock through overrides and transaction commit', async () => {
+    const scope = { organizationId: organizationAId };
+    const sourceDatabase = database as PostgresDatabasePort;
+    const directPool = pool as Pool;
+    const propertyLockKey = `booking-engine:property:${organizationAId}:${propertyId}`;
+    const planA = {
+      currency: 'EUR',
+      baseNightlyRateMinor: 10_000,
+      cleaningFeeMinor: 1_000,
+      minimumStayNights: 2,
+      seasonalOverrides: [
+        { arrival: '2026-08-01', departure: '2026-08-03', nightlyRateMinor: 15_000 },
+      ],
+    };
+    const planB = {
+      currency: 'EUR',
+      baseNightlyRateMinor: 22_000,
+      cleaningFeeMinor: 4_000,
+      minimumStayNights: 1,
+      seasonalOverrides: [
+        { arrival: '2026-08-01', departure: '2026-08-03', nightlyRateMinor: 31_000 },
+      ],
+    };
+    await rates.saveRatePlan(scope, propertyId, planA);
+
+    const releaseReaderAfterPlan = createDeferred<void>();
+    const releaseReaderAfterOverrides = createDeferred<void>();
+    const readerPlanRead = createDeferred<TransactionQuery>();
+    const readerOverridesRead = createDeferred<TransactionQuery>();
+    const readingRates = createPostgresRateRepository(
+      wrapTransactionQueries(sourceDatabase, {
+        afterQuery(query) {
+          if (query.text.includes(`FROM ${table('property_rate_plans')}`)) {
+            readerPlanRead.resolve(query);
+            return releaseReaderAfterPlan.promise;
+          }
+          if (query.text.includes(`FROM ${table('seasonal_rate_overrides')}`)) {
+            readerOverridesRead.resolve(query);
+            return releaseReaderAfterOverrides.promise;
+          }
+          return undefined;
+        },
+      }),
+    );
+    const writerLockStarted = createDeferred<TransactionQuery>();
+    const writerLockAcquired = createDeferred<TransactionQuery>();
+    const writerPlanQueryStarted = createDeferred<TransactionQuery>();
+    const releaseWriterAfterLock = createDeferred<void>();
+    let writerReachedPlanRow = false;
+    const writingRates = createPostgresRateRepository(
+      wrapTransactionQueries(sourceDatabase, {
+        afterQueryStarted(query) {
+          if (query.text.includes('pg_advisory_xact_lock')) {
+            writerLockStarted.resolve(query);
+          }
+          if (
+            query.text.includes(`INSERT INTO ${table('property_rate_plans')}`) &&
+            query.values?.[0] === organizationAId &&
+            query.values?.[1] === propertyId
+          ) {
+            writerReachedPlanRow = true;
+            writerPlanQueryStarted.resolve(query);
+          }
+        },
+        afterQuery(query) {
+          if (query.text.includes('pg_advisory_xact_lock')) {
+            writerLockAcquired.resolve(query);
+            return releaseWriterAfterLock.promise;
+          }
+          return undefined;
+        },
+      }),
+    );
+
+    const quotePromise = readingRates.quote(scope, propertyId, {
+      arrival: '2026-08-01',
+      departure: '2026-08-03',
+    });
+    let savePromise: ReturnType<RateRepository['saveRatePlan']> | undefined;
+    try {
+      const planQuery = await readerPlanRead.promise;
+      expect(planQuery.values).toEqual([organizationAId, propertyId]);
+
+      const lockProbe = await directPool.query<{ acquired: boolean }>(
+        'SELECT pg_try_advisory_xact_lock(hashtextextended($1, 0)) AS acquired',
+        [propertyLockKey],
+      );
+      expect(lockProbe.rows).toEqual([{ acquired: false }]);
+
+      savePromise = writingRates.saveRatePlan(scope, propertyId, planB);
+      const startedLockQuery = await writerLockStarted.promise;
+      expect(startedLockQuery.values).toEqual([propertyLockKey]);
+      expect(writerReachedPlanRow).toBe(false);
+
+      const committedSnapshot = await directPool.query<{
+        base_nightly_rate_minor: string;
+        cleaning_fee_minor: string;
+        nightly_rate_minor: string;
+      }>(
+        `
+          SELECT plan.base_nightly_rate_minor,
+                 plan.cleaning_fee_minor,
+                 override.nightly_rate_minor
+          FROM ${table('property_rate_plans')} AS plan
+          JOIN ${table('seasonal_rate_overrides')} AS override
+            ON override.organization_id = plan.organization_id
+           AND override.property_id = plan.property_id
+          WHERE plan.organization_id = $1 AND plan.property_id = $2
+        `,
+        [organizationAId, propertyId],
+      );
+      expect(committedSnapshot.rows).toEqual([
+        {
+          base_nightly_rate_minor: '10000',
+          cleaning_fee_minor: '1000',
+          nightly_rate_minor: '15000',
+        },
+      ]);
+
+      releaseReaderAfterPlan.resolve();
+      const overridesQuery = await readerOverridesRead.promise;
+      expect(overridesQuery.values).toEqual([organizationAId, propertyId]);
+      expect(writerReachedPlanRow).toBe(false);
+
+      releaseReaderAfterOverrides.resolve();
+      const quote = await quotePromise;
+      expect(quote).toMatchObject({
+        nightlySubtotalMinor: 30_000,
+        cleaningFeeMinor: 1_000,
+        totalMinor: 31_000,
+      });
+
+      const acquiredLockQuery = await writerLockAcquired.promise;
+      expect(acquiredLockQuery.values).toEqual([propertyLockKey]);
+      expect(writerReachedPlanRow).toBe(false);
+      releaseWriterAfterLock.resolve();
+
+      const writePlanQuery = await writerPlanQueryStarted.promise;
+      expect(writePlanQuery.values?.slice(0, 2)).toEqual([organizationAId, propertyId]);
+      const savedPlan = await savePromise;
+      expect(savedPlan).toMatchObject(planB);
+      await expect(rates.getRatePlan(scope, propertyId)).resolves.toMatchObject(planB);
+    } finally {
+      releaseReaderAfterPlan.resolve();
+      releaseReaderAfterOverrides.resolve();
+      releaseWriterAfterLock.resolve();
+      await Promise.allSettled([quotePromise, ...(savePromise === undefined ? [] : [savePromise])]);
+    }
+  });
+
   it('treats blocks and active holds as bounded half-open availability', async () => {
     const scope = { organizationId: organizationAId };
     await availability.createManualBlock(scope, propertyId, {
@@ -153,6 +361,7 @@ describe('PostgreSQL availability, rates, and atomic occupancy', () => {
     await availability.releaseManualBlock(scope, propertyId, `manual-${runId}`);
     const hold = await availability.createHold(scope, propertyId, {
       id: `hold-${runId}`,
+
       arrival: '2026-08-02',
       departure: '2026-08-04',
       expiresAt: '2026-08-10T00:00:00.000Z',
@@ -233,6 +442,24 @@ describe('PostgreSQL availability, rates, and atomic occupancy', () => {
     expect(result?.rows[0]?.definition).toContain('stay WITH &&');
     expect(result?.rows[0]?.definition).toMatch(/status = 'active'/u);
     expect(result?.rows[0]?.definition).not.toMatch(/current_timestamp|now\s*\(/iu);
+  });
+  it('rejects control and bidi formatting characters in manual block reasons', async () => {
+    const scope = { organizationId: organizationAId };
+    for (const [index, reason] of [
+      'Owner\u0000 block',
+      'Owner\u0085 block',
+      'Owner\u202e block',
+      'Owner\u2066 block',
+    ].entries()) {
+      await expect(
+        availability.createManualBlock(scope, propertyId, {
+          id: `invalid-reason-${runId}-${index}`,
+          arrival: '2026-09-01',
+          departure: '2026-09-03',
+          reason,
+        }),
+      ).rejects.toMatchObject({ code: 'invalid_availability_id' });
+    }
   });
 
   it('allows exactly one of two concurrent overlapping holds in each of 100 races', async () => {

@@ -1,27 +1,117 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 
-import { Pool } from 'pg';
+import { Pool, type QueryResult, type QueryResultRow } from 'pg';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import type { PropertyConfigurationInput } from '../../packages/booking-core/src/index.js';
 import {
-  createOrganizationRepository,
+  createPostgresAvailabilityRepository,
+  createPostgresOrganizationRepository,
   createPostgresDatabase,
   createPostgresPropertyRepository,
   runMigrations,
+  type AvailabilityRecord,
+  type AvailabilityRepository,
   type OrganizationRepository,
   type PostgresDatabasePort,
+  type PostgresTransactionPort,
   type PropertyRepository,
+  MigrationDriftError,
 } from '../../packages/database-postgres/src/index.js';
+import { MIGRATION_FILES } from '../../packages/database-postgres/src/database/migrations.js';
 
 const connectionString =
   process.env['DATABASE_URL'] ??
-  'postgresql://booking_engine_local:local-only-placeholder@127.0.0.1:5432/booking_engine_local';
+  'postgresql://booking_engine_local:local-only-placeholder@127.0.0.1:15432/booking_engine_local';
 const runId = randomUUID().replaceAll('-', '').slice(0, 12);
 const integrationSchema = `property_test_${runId}`;
 const migrationSchema = `migration_test_${runId}`;
+const migrationDriftSchema = `migration_drift_test_${runId}`;
 
 const table = (schema: string, name: string): string => `"${schema}"."${name}"`;
+
+const expectedMigrationIds = MIGRATION_FILES;
+
+const authoritativeMigrationDirectory = new URL(
+  '../../packages/database-postgres/migrations/',
+  import.meta.url,
+);
+const expectedMigrationStatuses = expectedMigrationIds.map((id) => ({
+  id,
+  checksum: createHash('sha256')
+    .update(readFileSync(new URL(id, authoritativeMigrationDirectory)))
+    .digest('hex'),
+}));
+
+function expectMigrationStatuses(
+  statuses: readonly { readonly id: string; readonly checksum: string }[],
+): void {
+  expect(Object.isFrozen(statuses)).toBe(true);
+  expect(statuses.map(({ id }) => id)).toEqual(expectedMigrationIds);
+  expect(statuses).toEqual(expectedMigrationStatuses);
+  for (const status of statuses) {
+    expect(Object.isFrozen(status)).toBe(true);
+    expect(status.checksum).toMatch(/^[a-f0-9]{64}$/u);
+  }
+}
+
+interface TransactionQuery {
+  readonly text: string;
+  readonly values: readonly unknown[] | undefined;
+}
+
+interface TransactionQueryHooks {
+  readonly afterQueryStarted?: (query: TransactionQuery) => Promise<void> | void;
+  readonly afterQuery?: (query: TransactionQuery) => Promise<void> | void;
+}
+
+function createDeferred<T>(): {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T) => void;
+} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
+function wrapTransactionQueries(
+  source: PostgresDatabasePort,
+  hooks: TransactionQueryHooks,
+): PostgresDatabasePort {
+  return {
+    dialect: source.dialect,
+    schema: source.schema,
+    query<Row extends QueryResultRow = QueryResultRow>(
+      text: string,
+      values?: readonly unknown[],
+    ): Promise<QueryResult<Row>> {
+      return source.query<Row>(text, values);
+    },
+    withTransaction<T>(work: (transaction: PostgresTransactionPort) => Promise<T>): Promise<T> {
+      return source.withTransaction((transaction) => {
+        return work({
+          async query<Row extends QueryResultRow = QueryResultRow>(
+            text: string,
+            values?: readonly unknown[],
+          ): Promise<QueryResult<Row>> {
+            const query = { text, values };
+            const resultPromise = transaction.query<Row>(text, values);
+            await hooks.afterQueryStarted?.(query);
+            const result = await resultPromise;
+            await hooks.afterQuery?.(query);
+            return result;
+          },
+        });
+      });
+    },
+    close(): Promise<void> {
+      return source.close();
+    },
+  };
+}
 
 function makeProperty(id: string, name = 'Tenant A Garden Bungalow'): PropertyConfigurationInput {
   return {
@@ -50,6 +140,7 @@ describe('PostgreSQL tenant-safe property persistence', () => {
   let database: PostgresDatabasePort | undefined;
   let organizations: OrganizationRepository;
   let properties: PropertyRepository;
+  let availability: AvailabilityRepository;
   let organizationAId: string;
   let organizationBId: string;
 
@@ -59,8 +150,9 @@ describe('PostgreSQL tenant-safe property persistence', () => {
 
     database = createPostgresDatabase({ connectionString, schema: integrationSchema });
     await runMigrations(database);
-    organizations = createOrganizationRepository(database);
+    organizations = createPostgresOrganizationRepository(database);
     properties = createPostgresPropertyRepository(database);
+    availability = createPostgresAvailabilityRepository(database);
   });
 
   beforeEach(async () => {
@@ -214,8 +306,142 @@ describe('PostgreSQL tenant-safe property persistence', () => {
     expect(await properties.findById(tenantA, tenantAProperty.id)).toBeNull();
     expect(await properties.findById(tenantB, sharedProperty.id)).not.toBeNull();
   });
+  it('holds the property mutation lock through the update transaction commit', async () => {
+    const property = makeProperty(`mutation-race-${runId}`);
+    const scope = { organizationId: organizationAId };
+    const sourceDatabase = database as PostgresDatabasePort;
+    const directPool = pool as Pool;
+    const propertyLockKey = `booking-engine:property:${organizationAId}:${property.id}`;
+    const holdId = `mutation-race-hold-${runId}`;
+    await properties.create(scope, property);
 
-  it('returns a public projection without operational notes', async () => {
+    const releaseUpdateAfterWrite = createDeferred<void>();
+    const updateLockAcquired = createDeferred<TransactionQuery>();
+    const updateWritten = createDeferred<TransactionQuery>();
+    const lockedProperties = createPostgresPropertyRepository(
+      wrapTransactionQueries(sourceDatabase, {
+        afterQuery(query) {
+          if (query.text.includes('pg_advisory_xact_lock')) {
+            updateLockAcquired.resolve(query);
+          }
+          if (
+            query.text.includes(`UPDATE ${table(integrationSchema, 'properties')}`) &&
+            query.values?.[0] === organizationAId &&
+            query.values?.[1] === property.id
+          ) {
+            updateWritten.resolve(query);
+            return releaseUpdateAfterWrite.promise;
+          }
+          return undefined;
+        },
+      }),
+    );
+    const availabilityLockStarted = createDeferred<TransactionQuery>();
+    const availabilityLockAcquired = createDeferred<TransactionQuery>();
+    const releaseAvailabilityAfterLock = createDeferred<void>();
+    let holdProtectedQueryStarted = false;
+    const competingAvailability = createPostgresAvailabilityRepository(
+      wrapTransactionQueries(sourceDatabase, {
+        afterQueryStarted(query) {
+          if (query.text.includes('pg_advisory_xact_lock')) {
+            availabilityLockStarted.resolve(query);
+            return;
+          }
+          holdProtectedQueryStarted = true;
+        },
+        afterQuery(query) {
+          if (query.text.includes('pg_advisory_xact_lock')) {
+            availabilityLockAcquired.resolve(query);
+            return releaseAvailabilityAfterLock.promise;
+          }
+          return undefined;
+        },
+      }),
+    );
+
+    const updatePromise = lockedProperties.update(scope, property.id, {
+      ...property,
+      name: 'Mutation Race Updated',
+    });
+    let holdPromise: Promise<AvailabilityRecord> | undefined;
+    try {
+      const [propertyLockQuery, updateQuery] = await Promise.all([
+        updateLockAcquired.promise,
+        updateWritten.promise,
+      ]);
+      expect(propertyLockQuery.values).toEqual([propertyLockKey]);
+      expect(updateQuery.text).toContain(`UPDATE ${table(integrationSchema, 'properties')}`);
+
+      const uncommittedProperty = await properties.findById(scope, property.id);
+      expect(uncommittedProperty?.name).toBe(property.name);
+      const lockProbe = await directPool.query<{ acquired: boolean }>(
+        'SELECT pg_try_advisory_xact_lock(hashtextextended($1, 0)) AS acquired',
+        [propertyLockKey],
+      );
+      expect(lockProbe.rows).toEqual([{ acquired: false }]);
+
+      holdPromise = competingAvailability.createHold(scope, property.id, {
+        id: holdId,
+        arrival: '2026-11-01',
+        departure: '2026-11-03',
+        expiresAt: '2026-11-10T00:00:00.000Z',
+      });
+      const availabilityLockQuery = await availabilityLockStarted.promise;
+      expect(availabilityLockQuery.values).toEqual([propertyLockKey]);
+      expect(holdProtectedQueryStarted).toBe(false);
+
+      const beforeCommit = await directPool.query<{ count: number }>(
+        `
+          SELECT COUNT(*)::int AS count
+          FROM ${table(integrationSchema, 'availability_blocks')}
+          WHERE organization_id = $1 AND property_id = $2 AND record_id = $3
+        `,
+        [organizationAId, property.id, holdId],
+      );
+      expect(beforeCommit.rows[0]?.count).toBe(0);
+
+      releaseUpdateAfterWrite.resolve();
+      const updated = await updatePromise;
+      expect(updated).toMatchObject({ id: property.id, name: 'Mutation Race Updated' });
+      await expect(properties.findById(scope, property.id)).resolves.toMatchObject({
+        id: property.id,
+        name: 'Mutation Race Updated',
+      });
+
+      const acquiredAvailabilityLockQuery = await availabilityLockAcquired.promise;
+      expect(acquiredAvailabilityLockQuery.values).toEqual([propertyLockKey]);
+      expect(holdProtectedQueryStarted).toBe(false);
+      releaseAvailabilityAfterLock.resolve();
+
+      const hold = await holdPromise;
+      expect(hold).toMatchObject({
+        id: holdId,
+        status: 'held',
+        arrival: '2026-11-01',
+        departure: '2026-11-03',
+      });
+
+      const afterCommit = await directPool.query<{ status: string }>(
+        `
+          SELECT status
+          FROM ${table(integrationSchema, 'availability_blocks')}
+          WHERE organization_id = $1 AND property_id = $2 AND record_id = $3
+        `,
+        [organizationAId, property.id, hold.id],
+      );
+      expect(afterCommit.rows).toEqual([{ status: 'active' }]);
+      await availability.releaseHold(scope, property.id, hold.id);
+    } finally {
+      releaseUpdateAfterWrite.resolve();
+      releaseAvailabilityAfterLock.resolve();
+      await Promise.allSettled([
+        updatePromise,
+        ...(holdPromise === undefined ? [] : [holdPromise]),
+      ]);
+    }
+  });
+
+  it('returns a canonical private projection while the SQL view omits operational notes', async () => {
     const property = makeProperty(`public-${runId}`, 'Public Organization B Bungalow');
     await properties.create({ organizationId: organizationBId }, property);
 
@@ -224,12 +450,11 @@ describe('PostgreSQL tenant-safe property persistence', () => {
       property.id,
     );
     expect(publicProperty).toMatchObject({ id: property.id, name: property.name });
-    expect('operationalNotes' in (publicProperty ?? {})).toBe(false);
-    expect(JSON.stringify(publicProperty)).not.toContain(property.operationalNotes);
+    expect(publicProperty?.operationalNotes).toBe('public projection validation sentinel');
 
     const publicProperties = await properties.listPublic({ organizationId: organizationBId });
     expect(publicProperties).toHaveLength(1);
-    expect('operationalNotes' in (publicProperties[0] ?? {})).toBe(false);
+    expect(publicProperties[0]?.operationalNotes).toBe('public projection validation sentinel');
 
     const columns = await pool?.query<{ column_name: string }>(
       `
@@ -248,13 +473,21 @@ describe('PostgreSQL tenant-safe property persistence', () => {
     const second = createPostgresDatabase({ connectionString, schema: migrationSchema });
 
     try {
-      await Promise.all([runMigrations(first), runMigrations(second)]);
-      await runMigrations(first);
+      const [firstStatuses, secondStatuses] = await Promise.all([
+        runMigrations(first),
+        runMigrations(second),
+      ]);
+      const repeatedStatuses = await runMigrations(first);
+      expectMigrationStatuses(firstStatuses);
+      expectMigrationStatuses(secondStatuses);
+      expectMigrationStatuses(repeatedStatuses);
+      expect(secondStatuses).toEqual(firstStatuses);
+      expect(repeatedStatuses).toEqual(firstStatuses);
 
       const result = await pool?.query<{ count: string }>(
         `SELECT count(*)::text AS count FROM ${table(migrationSchema, 'schema_migrations')}`,
       );
-      expect(result?.rows[0]?.count).toBe('9');
+      expect(result?.rows[0]?.count).toBe(String(expectedMigrationIds.length));
       await expect(
         pool?.query(`SELECT 1 FROM ${table(migrationSchema, 'organizations')} LIMIT 1`),
       ).resolves.toBeDefined();
@@ -262,6 +495,37 @@ describe('PostgreSQL tenant-safe property persistence', () => {
       await first.close();
       await second.close();
       await pool?.query(`DROP SCHEMA IF EXISTS "${migrationSchema}" CASCADE`);
+    }
+  });
+  it('fails closed when an applied migration checksum is tampered', async () => {
+    const first = createPostgresDatabase({
+      connectionString,
+      schema: migrationDriftSchema,
+    });
+    try {
+      const initialStatuses = await runMigrations(first);
+      expectMigrationStatuses(initialStatuses);
+      const original = await pool?.query<{ checksum: string }>(
+        `SELECT checksum FROM ${table(migrationDriftSchema, 'schema_migrations')} WHERE id = $1`,
+        ['001_organizations_properties.sql'],
+      );
+      const originalChecksum = original?.rows[0]?.checksum;
+      expect(originalChecksum).toMatch(/^[a-f0-9]{64}$/u);
+      await pool?.query(
+        `UPDATE ${table(migrationDriftSchema, 'schema_migrations')} SET checksum = $2 WHERE id = $1`,
+        ['001_organizations_properties.sql', '0'.repeat(64)],
+      );
+      await expect(runMigrations(first)).rejects.toBeInstanceOf(MigrationDriftError);
+      await pool?.query(
+        `UPDATE ${table(migrationDriftSchema, 'schema_migrations')} SET checksum = $2 WHERE id = $1`,
+        ['001_organizations_properties.sql', originalChecksum],
+      );
+      const restoredStatuses = await runMigrations(first);
+      expectMigrationStatuses(restoredStatuses);
+      expect(restoredStatuses).toEqual(initialStatuses);
+    } finally {
+      await first.close();
+      await pool?.query(`DROP SCHEMA IF EXISTS "${migrationDriftSchema}" CASCADE`);
     }
   });
 });

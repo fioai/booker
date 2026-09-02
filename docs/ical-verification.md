@@ -1,3 +1,8 @@
+> **Archived verification record:** Historical evidence only. Use the single authoritative
+> [README release checklist](../README.md#development-and-release-gates). The CI workflow and root
+> scripts implement its checks; they do not define a second command list. This dated record is not
+> a release checklist.
+
 # Bounded iCal slice verification
 
 Date: 2026-07-12
@@ -47,7 +52,7 @@ property locking: overlap ordering, update-overlap retention, and the 100-writer
 - `corepack pnpm test:integration` - 4 files, 22 tests passed
 - `corepack pnpm check:public-boundary` - passed (5 SDK source files)
 - `corepack pnpm build` - passed
-- `corepack pnpm test:e2e` - passed with no test files present
+- Browser verification was not a repository command; no E2E script exists in the current gate.
 - `docker compose config` - passed
 - `git diff --check` - passed; only Git line-ending warnings were reported
 

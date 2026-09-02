@@ -1,8 +1,8 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 
 import type {
-  CheckoutRequest,
-  CheckoutSession,
+  PaymentCheckoutRequest,
+  PaymentCheckoutSession,
   MoneyMinor,
   PaymentProvider,
   PaymentWebhookEvent,
@@ -402,7 +402,7 @@ export function createStripeCheckoutAdapter(
   return {
     providerName: 'stripe',
     providerAccountId: validated.accountId,
-    async createCheckoutSession(request: CheckoutRequest): Promise<CheckoutSession> {
+    async createCheckoutSession(request: PaymentCheckoutRequest): Promise<PaymentCheckoutSession> {
       const canonical = createPaymentCheckoutRequest(request);
       if (!canonical.ok) {
         throw new StripeWebhookError('invalid_payload', 'Stripe checkout request is invalid.');
@@ -429,5 +429,3 @@ export function createStripeCheckoutAdapter(
     },
   };
 }
-
-export const createStripeTestCheckoutAdapter = createStripeCheckoutAdapter;

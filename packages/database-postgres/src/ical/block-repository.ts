@@ -1,7 +1,7 @@
 import type { QueryResultRow } from 'pg';
 
 import { createLocalDateInterval } from '@booking-engine/booking-core';
-import { ICalStaleWriteError } from '@booking-engine/channel-ical';
+import { ICAL_SEQUENCE_MAX, ICalStaleWriteError } from '@booking-engine/channel-ical';
 import type {
   ICalBlockRecord,
   ICalBlockStore,
@@ -10,10 +10,10 @@ import type {
   ICalEventStatus,
 } from '@booking-engine/channel-ical';
 
-import { PersistenceError, isPostgresError } from '../persistence-errors.js';
-import { lockProperty } from '../property-lock.js';
-import type { PostgresDatabasePort, PostgresTransactionPort } from '../postgres-database.js';
-import { qualifiedTable } from '../sql-identifiers.js';
+import { PersistenceError, isPostgresError } from '../database/errors.js';
+import { lockProperty } from '../database/property-lock.js';
+import type { PostgresDatabasePort, PostgresTransactionPort } from '../database/postgres.js';
+import { qualifiedTable } from '../database/identifiers.js';
 
 interface ICalBlockRow extends QueryResultRow {
   readonly organization_id: unknown;
@@ -85,7 +85,7 @@ function mapSequence(value: unknown): number | null {
       : typeof value === 'string' && /^\d+$/u.test(value)
         ? Number(value)
         : Number.NaN;
-  if (!Number.isSafeInteger(sequence) || sequence < 0) {
+  if (!Number.isInteger(sequence) || sequence < 0 || sequence > ICAL_SEQUENCE_MAX) {
     throw new PersistenceError('database_corruption', 'iCalendar block sequence is invalid.');
   }
   return sequence;
@@ -126,7 +126,10 @@ function validateRecord(
       record.eventStatus !== 'tentative' &&
       record.eventStatus !== 'cancelled' &&
       record.eventStatus !== 'unknown') ||
-    (record.sequence !== null && (!Number.isSafeInteger(record.sequence) || record.sequence < 0)) ||
+    (record.sequence !== null &&
+      (!Number.isInteger(record.sequence) ||
+        record.sequence < 0 ||
+        record.sequence > ICAL_SEQUENCE_MAX)) ||
     (record.lastModified !== null && Number.isNaN(Date.parse(record.lastModified))) ||
     (record.summary !== null &&
       (typeof record.summary !== 'string' ||
@@ -427,7 +430,9 @@ export class PostgresICalBlockStore implements ICalBlockStore {
     if (provenance !== undefined) {
       if (
         provenance.sequence !== null &&
-        (!Number.isSafeInteger(provenance.sequence) || provenance.sequence < 0)
+        (!Number.isInteger(provenance.sequence) ||
+          provenance.sequence < 0 ||
+          provenance.sequence > ICAL_SEQUENCE_MAX)
       ) {
         throw new PersistenceError(
           'invalid_availability_id',
@@ -588,8 +593,6 @@ export class PostgresICalBlockStore implements ICalBlockStore {
   }
 }
 
-export function createICalBlockStore(database: PostgresDatabasePort): ICalBlockStore {
+export function createPostgresICalBlockStore(database: PostgresDatabasePort): ICalBlockStore {
   return new PostgresICalBlockStore(database);
 }
-
-export const createPostgresICalBlockStore = createICalBlockStore;

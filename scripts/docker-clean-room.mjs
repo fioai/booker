@@ -6,6 +6,9 @@ import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
+const CLEAN_ROOM_POSTGRES_DB = 'booking_engine_local';
+const CLEAN_ROOM_POSTGRES_USER = 'booking_engine_local';
+const CLEAN_ROOM_POSTGRES_PASSWORD = 'local-only-placeholder';
 
 function help() {
   process.stdout.write(
@@ -99,6 +102,9 @@ async function main() {
   const env = {
     ...process.env,
     COMPOSE_PROJECT_NAME: project,
+    POSTGRES_DB: CLEAN_ROOM_POSTGRES_DB,
+    POSTGRES_USER: CLEAN_ROOM_POSTGRES_USER,
+    POSTGRES_PASSWORD: CLEAN_ROOM_POSTGRES_PASSWORD,
     POSTGRES_PORT: String(postgresPort),
     API_PORT: String(apiPort),
     MAILPIT_SMTP_PORT: String(smtpPort),
@@ -128,6 +134,8 @@ async function main() {
         '-e',
         'SMOKE_BASE_URL=http://127.0.0.1:3000',
         '-e',
+        'SMOKE_ADMIN_ORIGIN=http://127.0.0.1:' + apiPort,
+        '-e',
         'SMOKE_ADMIN_EMAIL=sample-owner@example.test',
         '-e',
         'SMOKE_ADMIN_PASSWORD=local-only-owner-password',
@@ -152,12 +160,15 @@ async function main() {
       process.stdout.write(smoke.stdout.trim() + '\n');
     }
     const backupUrl =
-      'postgresql://booking_engine_local:local-only-placeholder@127.0.0.1:' +
-      postgresPort +
-      '/booking_engine_local';
+      `postgresql://${CLEAN_ROOM_POSTGRES_USER}:${CLEAN_ROOM_POSTGRES_PASSWORD}` +
+      `@127.0.0.1:${postgresPort}/${CLEAN_ROOM_POSTGRES_DB}`;
     const backup = await run(
       process.execPath,
-      [resolve(root, 'scripts/backup-restore-check.mjs')],
+      [
+        resolve(root, 'scripts/backup-restore-check.mjs'),
+        '--confirm-database',
+        CLEAN_ROOM_POSTGRES_DB,
+      ],
       {
         ...env,
         BOOKING_ENGINE_ENV: 'local',

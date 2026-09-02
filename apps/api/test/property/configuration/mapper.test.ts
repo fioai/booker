@@ -6,7 +6,10 @@ import {
   type PropertyConfigurationInput,
   type PropertyConfiguration,
 } from '@booking-engine/booking-core';
-import type { PublicPropertyConfigurationV1 } from '@booking-engine/sdk-typescript';
+import {
+  createBookingEngineClientV1,
+  type PublicPropertyConfigurationV1,
+} from '@booking-engine/sdk-typescript';
 
 import { serializePublicProperty } from '../../../src/index.js';
 import { sampleBungalowFixture } from '../../../../../packages/booking-core/test/property/fixtures.js';
@@ -79,6 +82,29 @@ describe('API public property serialization', () => {
     expect(JSON.stringify(publicProperty)).toContain(
       'A quiet sample property for local verification.',
     );
+  });
+
+  it('produces astral text accepted by the public SDK response boundary', async () => {
+    const astralPair = '\ud83c\udfe0';
+    const publicProperty = serializePublicProperty(
+      validConfiguration({
+        ...sampleBungalowFixture,
+        name: `Astral ${astralPair}`,
+        summary: `Astral ${astralPair} summary`,
+        amenities: [`Astral ${astralPair} amenity`],
+        hostNotes: `Astral ${astralPair} host notes`,
+      }),
+    );
+    const client = createBookingEngineClientV1({
+      baseUrl: 'https://api.example.test',
+      fetch: async () => ({
+        ok: true,
+        status: 200,
+        json: async () => publicProperty,
+      }),
+    });
+
+    await expect(client.getProperty(publicProperty.id)).resolves.toEqual(publicProperty);
   });
 
   it('does not expose private notes through the public SDK type', () => {
