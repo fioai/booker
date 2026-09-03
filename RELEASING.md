@@ -1,18 +1,17 @@
 # Releasing
 
-Booking Engine is pre-release. The runtime is not recommended for production traffic, and the
-public SDK is not published yet. This document is the release procedure for
-`@booking-engine/sdk-typescript` and for a matching runtime release.
+Booking Engine is pre-release. The runtime is not recommended for production traffic. This
+document describes the release procedure for the public
+`@booking-engine/sdk-typescript` package and any matching runtime release.
 
 ## Current release status
 
-`@booking-engine/sdk-typescript` version `0.1.0` is an **unpublished release candidate**. It is
-not a registry release until both of these conditions are true:
+The `v0.1.0` tag is the first public SDK release target. The release is complete only when the
+annotated tag points to the approved commit and the publication workflow has published
+`@booking-engine/sdk-typescript@0.1.0` with npm provenance.
 
-1. the annotated `v0.1.0` Git tag points to the approved release commit; and
-2. the package registry shows `@booking-engine/sdk-typescript@0.1.0` with provenance.
-
-Do not describe the candidate as published or recommend the runtime for production traffic.
+Do not describe the runtime as production-ready. A tag alone is not a package publication, and a
+registry entry without the matching tag is not a complete release.
 
 ## Version and tag rules
 
@@ -72,18 +71,25 @@ verification evidence is retained outside the repository without secrets or pers
 
 ## SDK pack, tag, publish, and provenance
 
-1. Set the SDK version and create a dated changelog entry that labels it an unpublished release
-   candidate. For the current candidate, set `SDK_VERSION=0.1.0`. Confirm the SDK README has the
-   same status until the tag and registry publication succeed.
+Publication is performed only by [`.github/workflows/publish.yml`](.github/workflows/publish.yml).
+The workflow runs on a GitHub-hosted runner with Node.js `22.23.1`, pnpm `10.12.1`, and npm
+`11.5.1`. It grants only `contents: read` and `id-token: write`; the ID token lets npm use
+GitHub Actions OIDC for trusted publishing and provenance. Do not publish a provenance package
+from a workstation.
+
+1. Set the SDK version and create the dated changelog entry in the release commit. For the
+   current release, set `SDK_VERSION=0.1.0`:
 
    ```sh
    export SDK_VERSION=0.1.0
    test "$(node -p "require('./packages/sdk-typescript/package.json').version")" = "$SDK_VERSION"
    ```
 
-2. Build and run `check:sdk-package` from the root. Confirm that the package has no workspace
-   dependencies and that its packed files contain only the intended public surface.
-3. Pack into a temporary directory, not the repository:
+2. Run the release gates from the repository root on the exact release commit. Build the SDK and
+   run `check:sdk-package`, `check:public-boundary`, `check:public-contract`, `scan:secrets`, and
+   `scan:history`. Pack the SDK into a temporary directory and inspect the archive. It must
+   contain the built SDK files, `README.md`, and `LICENSE`, and must not contain source maps,
+   local environment files, credentials, or workspace packages:
 
    ```sh
    export RELEASE_TMP="$(mktemp -d)"
@@ -91,49 +97,62 @@ verification evidence is retained outside the repository without secrets or pers
    tar -tzf "$RELEASE_TMP"/*.tgz
    ```
 
-   Inspect the archive. It must contain the built SDK files, `README.md`, and `LICENSE`, and must
-   not contain source maps that point outside the archive, local environment files, credentials, or
-   workspace packages.
-
-4. Run a package publish dry run from the exact candidate archive and review the final package
-   name, version, access setting, and files:
+3. Run a review-only package dry run from the exact archive. This is not a publication and must
+   not use a provenance flag:
 
    ```sh
    RELEASE_TARBALL="$(printf '%s\n' "$RELEASE_TMP"/*.tgz)"
    npm publish "$RELEASE_TARBALL" --dry-run --access public
    ```
 
-5. Merge the approved release commit to the protected release branch. Create and push the
-   annotated tag only after all gates and the dry run pass:
+4. Merge the approved release commit to `main`. The workflow compares the tagged commit with
+   the current `origin/main`, so create and push the annotated tag only after the merge and all
+   gates pass:
 
    ```sh
    git tag --annotate "v${SDK_VERSION}" --message "Booking Engine SDK ${SDK_VERSION}"
    git push origin "v${SDK_VERSION}"
    ```
 
-6. From the exact tagged checkout, pack into a new temporary directory and publish the reviewed
-   archive with npm provenance. Use a trusted npm credential or the registry's approved OIDC
-   workflow; never put a token in a file, command argument, or log:
+5. Bootstrap the first package publication with one npm token. Before pushing `v0.1.0`, add a
+   repository Actions secret named exactly `NPM_TOKEN`. Give it only the npm publish permission
+   required for this package. The workflow reads only `secrets.NPM_TOKEN`, maps it to
+   `NODE_AUTH_TOKEN` for the publish step, and never writes the token to a file, command
+   argument, or log. Do not add another secret for this workflow.
 
-   ```sh
-   TAGGED_TMP="$(mktemp -d)"
-   corepack pnpm --dir packages/sdk-typescript pack --pack-destination "$TAGGED_TMP"
-   RELEASE_TARBALL="$(printf '%s\n' "$TAGGED_TMP"/*.tgz)"
-   npm publish "$RELEASE_TARBALL" --access public --provenance
-   ```
+6. Pushing the tag starts this workflow. It verifies the tag and current `origin/main`,
+   installs frozen dependencies, runs the SDK build, package, boundary, contract, and secret
+   gates, packs and verifies the expected SDK tarball, rejects an already-published version, and
+   publishes the public package with the `latest` dist-tag and `--provenance`. Wait for this run
+   to pass before announcing the release.
 
-7. Verify the registry result before announcing the release:
+7. After the first publication succeeds, configure the package's [npm Trusted
+   Publisher](https://docs.npmjs.com/trusted-publishers):
+
+   - provider: GitHub Actions;
+   - organization or user: `fioai`;
+   - repository: `booker`;
+   - workflow filename: `publish.yml`.
+
+   npm asks for the filename only. The workflow path in this repository is exactly
+   `.github/workflows/publish.yml`. Select the `npm publish` allowed action and do not add an
+   environment name that is not configured in the workflow.
+
+8. Remove the `NPM_TOKEN` repository secret after the trusted publisher is verified. Do not
+   replace it with another token. Future `v<version>` tags use the same workflow with
+   OIDC-only release authentication: npm `11.5.1` obtains short-lived credentials through
+   GitHub Actions OIDC and creates the provenance attestation. The workflow keeps
+   `--provenance` explicit for this contract.
+
+9. Verify the registry result before announcing the release:
 
    ```sh
    npm view "@booking-engine/sdk-typescript@${SDK_VERSION}" version dist.integrity dist.tarball
+   npm audit signatures
    ```
 
    The reported version, tarball, and integrity must match the reviewed package. Confirm the
-   registry's provenance or attestation record for the package as well. A tag alone is not a
-   publication, and a registry entry without the matching tag is not a complete release.
-
-8. Update the changelog and SDK README from “unpublished release candidate” to the dated release
-   status in a follow-up documentation change only after the tag and registry checks succeed.
+   registry provenance or attestation record as well. Keep the tag and release evidence.
 
 ## Rollback and deprecation
 

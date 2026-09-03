@@ -5,11 +5,18 @@ rules in [`RELEASING.md`](RELEASING.md).
 
 ## Unreleased
 
-- The Booking Engine runtime remains pre-release and is not recommended for production traffic.
-- `@booking-engine/sdk-typescript` `0.1.0` remains an unpublished release candidate. It has no
-  release tag or registry publication yet.
-- Release documentation now defines support, security reporting, release gates, SDK provenance,
-  rollback, and deprecation procedures.
+## 0.1.0 - 2026-09-03
+
+- First public SDK release: `@booking-engine/sdk-typescript` is a dependency-free TypeScript client
+  for the versioned Booking Engine V1 public HTTP contract, with property, availability, quote,
+  and request-to-book operations.
+- The SDK keeps request-to-book idempotency in the `Idempotency-Key` header, uses half-open
+  local-date intervals and integer minor-unit money values, and fails closed on invalid responses
+  and error payloads.
+- Release hardening adds tag and source verification, pinned GitHub Actions tooling, frozen
+  dependency installation, SDK package and archive checks, secret scanning, npm version checks,
+  and npm provenance publication with protection against republishing an existing version.
+- Booking Engine runtime remains pre-release and is not recommended for production traffic.
 
 ## Release entry rules
 
