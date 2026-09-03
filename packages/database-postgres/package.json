@@ -1,0 +1,25 @@
+{
+  "name": "@booking-engine/database-postgres",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "migrations"
+  ],
+  "dependencies": {
+    "@booking-engine/booking-core": "workspace:*",
+    "@booking-engine/payments": "workspace:*",
+    "@booking-engine/channel-ical": "workspace:*",
+    "pg": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.20.0"
+  }
+}

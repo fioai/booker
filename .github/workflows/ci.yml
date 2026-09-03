@@ -1,0 +1,128 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: 22.23.1
+  PNPM_VERSION: 10.12.1
+
+jobs:
+  quality:
+    name: Quality and release gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm check:architecture
+      - run: pnpm check:public-boundary
+      - run: pnpm check:public-contract
+      - run: pnpm check:sdk-package
+      - run: pnpm check:env
+      - run: pnpm scan:secrets
+      - run: corepack pnpm scan:history
+      - run: pnpm audit:dependencies
+      - name: Check committed whitespace on pull request
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: git diff --check "$BASE_SHA"...HEAD
+      - name: Check committed whitespace on push
+        if: github.event_name == 'push'
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          if [ -n "$BEFORE_SHA" ] && git cat-file -e "$BEFORE_SHA^{commit}" 2>/dev/null; then
+            BASE_SHA="$BEFORE_SHA"
+          else
+            BASE_SHA="$(git hash-object -w -t tree /dev/null)"
+          fi
+          git diff --check "$BASE_SHA" HEAD
+
+  integration:
+    name: PostgreSQL integration
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: booking_engine_ci
+          POSTGRES_USER: booking_engine_ci
+          POSTGRES_PASSWORD: booking_engine_ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U booking_engine_ci -d booking_engine_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      BOOKING_ENGINE_ENV: test
+      DATABASE_URL: postgresql://booking_engine_ci@127.0.0.1:5432/booking_engine_ci
+      PGUSER: booking_engine_ci
+      PGPASSWORD: booking_engine_ci_password
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGDATABASE: booking_engine_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:integration
+
+  sdk-consumer:
+    name: Packed SDK consumer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm check:sdk-package
+
+  docker:
+    name: Docker reproducibility
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: docker compose config
+      - run: pnpm docker:clean-room

@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/fioai/booker/security/advisories/new
+    about: Use a private GitHub Security Advisory. Do not disclose vulnerabilities in a public issue.
+  - name: Questions and usage help
+    url: https://github.com/fioai/booker/issues/new
+    about: Open a blank issue for a normal question. Remove secrets and personal data from examples.

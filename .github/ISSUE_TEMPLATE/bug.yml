@@ -1,0 +1,82 @@
+name: Bug report
+description: Report a reproducible problem in the public SDK, HTTP contract, or documented runtime flow.
+title: '[Bug]: '
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include credentials, tokens, database URLs, private calendar URLs, guest data, or other secrets.
+        If this report may expose a vulnerability, use the private security advisory route instead.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Give the exact SDK or runtime version, commit, or tag under test.
+      placeholder: '@booking-engine/sdk-typescript 0.1.0'
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which public surface is affected?
+      options:
+        - TypeScript SDK
+        - Public HTTP API
+        - Self-hosting or local development
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include operating system, Node.js version, package-manager version, and database or Docker details when relevant.
+      placeholder: |
+        OS: Linux
+        Node.js: 22.23.1
+        pnpm: 10.12.1
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: List the smallest exact example and steps that reproduce the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Redacted logs or responses
+      description: Add only the minimum evidence needed. Remove secrets and personal data.
+      render: text
+    validations:
+      required: false
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Add related issue links, workarounds, or regression information.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Report safety
+      options:
+        - label: I confirm that this report contains no secrets, credentials, tokens, or unredacted personal data.
+          required: true

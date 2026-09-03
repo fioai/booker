@@ -1,0 +1,62 @@
+name: ${COMPOSE_PROJECT_NAME:-booking-engine-hardening}
+
+services:
+  postgres:
+    image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-booking_engine_local}
+      POSTGRES_USER: ${POSTGRES_USER:-booking_engine_local}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-only-placeholder}
+    ports:
+      - '127.0.0.1:${POSTGRES_PORT:-15432}:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      BOOKING_ENGINE_ENV: local
+      DATABASE_URL: postgresql://${POSTGRES_USER:-booking_engine_local}:${POSTGRES_PASSWORD:-local-only-placeholder}@postgres:5432/${POSTGRES_DB:-booking_engine_local}
+      DATABASE_SCHEMA: public
+      HOST: 0.0.0.0
+      PORT: 3000
+      BOOKING_ENGINE_ORGANIZATION_ID: sample-tenant
+      BOOKING_ENGINE_PROPERTY_ID: sample-bungalow
+      BOOKING_ENGINE_SAMPLE_DATA: 'true'
+      BOOKING_ENGINE_SAMPLE_PASSWORD: local-only-owner-password
+      ADMIN_ORIGIN: 'http://127.0.0.1:${API_PORT:-13000}'
+      SECURE_COOKIES: 'false'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - '127.0.0.1:${API_PORT:-13000}:3000'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/healthz').then(r => { if (!r.ok) process.exit(1); }).catch(() => process.exit(1))",
+        ]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  mailpit:
+    image: axllent/mailpit:v1.21@sha256:81370195cd4a0eab9604d17c2617a7525b0486f9365555253b6c5376c6350f1a
+    ports:
+      - '127.0.0.1:${MAILPIT_SMTP_PORT:-11025}:1025'
+      - '127.0.0.1:${MAILPIT_UI_PORT:-18025}:8025'
+
+volumes:
+  postgres-data:

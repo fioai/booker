@@ -1,0 +1,2 @@
+* text=auto eol=lf
+packages/database-postgres/migrations/00[1-9]_*.sql -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

@@ -1,0 +1,31 @@
+{
+  "name": "@booking-engine/sdk-typescript",
+  "version": "0.1.0",
+  "description": "Dependency-free TypeScript client for the Booking Engine V1 public API.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fioai/booker.git",
+    "directory": "packages/sdk-typescript"
+  },
+  "bugs": {
+    "url": "https://github.com/fioai/booker/issues"
+  },
+  "homepage": "https://github.com/fioai/booker/tree/main/packages/sdk-typescript",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

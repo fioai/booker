@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
+  },
+  "references": [
+    { "path": "../../packages/booking-core" },
+    { "path": "../../packages/channel-ical" },
+    { "path": "../../packages/database-postgres" },
+    { "path": "../../packages/payments" },
+    { "path": "../../packages/sdk-typescript" }
+  ],
+  "include": ["src/**/*.ts"]
+}
