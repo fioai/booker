@@ -76,7 +76,8 @@ describe('API public property serialization', () => {
       'summary',
       'timezone',
     ]);
-    expect('operationalNotes' in publicProperty).toBe(false);
+    // @ts-expect-error Private operational notes are not part of the public v1 contract.
+    expect(publicProperty.operationalNotes).toBeUndefined();
     expect(JSON.stringify(publicProperty)).not.toContain('operationalNotes');
     expect(JSON.stringify(publicProperty)).not.toContain('PRIVATE SAMPLE MARKER');
     expect(JSON.stringify(publicProperty)).toContain(
@@ -105,13 +106,5 @@ describe('API public property serialization', () => {
     });
 
     await expect(client.getProperty(publicProperty.id)).resolves.toEqual(publicProperty);
-  });
-
-  it('does not expose private notes through the public SDK type', () => {
-    const publicProperty = serializePublicProperty(validConfiguration());
-
-    // @ts-expect-error Private operational notes are not part of the public v1 contract.
-    const privateNotes = publicProperty.operationalNotes;
-    void privateNotes;
   });
 });

@@ -1,0 +1,47 @@
+name: Feature request
+description: Suggest an improvement to the public SDK, HTTP contract, or documented developer flow.
+title: '[Feature]: '
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include credentials, tokens, database URLs, private calendar URLs, guest data, or other secrets.
+        For a suspected vulnerability, use the private security advisory route instead.
+  - type: textarea
+    id: problem
+    attributes:
+      label: User problem
+      description: What problem would this proposal solve, and who experiences it?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the desired behavior and public API or documentation changes.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Explain other approaches or workarounds you considered.
+  - type: textarea
+    id: scope
+    attributes:
+      label: Contract, migration, and privacy impact
+      description: Note compatibility, migration, security, privacy, and operational concerns.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add examples, links, or redacted supporting information.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Report safety
+      options:
+        - label: I confirm that this request contains no secrets, credentials, tokens, or unredacted personal data.
+          required: true

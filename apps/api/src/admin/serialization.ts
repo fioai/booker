@@ -11,6 +11,7 @@ import {
   type AdminUserResponse,
 } from './contracts.js';
 import type { ICalSyncHealth } from '../jobs/ical/sync.js';
+import { ICAL_SOURCE_ERROR_MESSAGES } from '../jobs/ical/errors.js';
 
 export const SAFE_ERROR_CODES = new Set([
   'invalid_input',
@@ -43,7 +44,6 @@ export const SAFE_ERROR_CODES = new Set([
   'non_positive_length',
   'interval_too_long',
   'invalid_currency',
-  'unsupported_currency',
   'invalid_minor_amount',
   'negative_minor_amount',
   'minor_amount_too_large',
@@ -61,39 +61,7 @@ export const SAFE_ERROR_CODES = new Set([
 ]);
 
 const SAFE_ICAL_ERRORS: Readonly<Record<string, string>> = Object.freeze({
-  invalid_url: 'The calendar source URL is invalid.',
-  insecure_protocol: 'The calendar source requires HTTPS.',
-  blocked_host: 'The calendar source host is not allowed.',
-  blocked_address: 'The calendar source resolved to a blocked network address.',
-  dns_error: 'The calendar source could not be resolved.',
-  dns_rebinding: 'The calendar source DNS resolution changed during validation.',
-  redirect_limit: 'The calendar source exceeded the redirect limit.',
-  redirect_location: 'The calendar source returned an invalid redirect.',
-  timeout: 'The calendar source request timed out.',
-  body_limit: 'The calendar source body exceeded the size limit.',
-  invalid_encoding: 'The calendar source body encoding is invalid.',
-  http_error: 'The calendar source returned an unsuccessful response.',
-  network_error: 'The calendar source request failed.',
-  missing_calendar: 'The calendar source returned malformed iCalendar data.',
-  invalid_component: 'The calendar source returned malformed iCalendar data.',
-  missing_event: 'The calendar source did not contain a usable event.',
-  event_limit: 'The calendar source contained too many events.',
-  duplicate_uid: 'The calendar source contained duplicate event identifiers.',
-  ambiguous_timezone: 'The calendar source contained timezone-ambiguous event data.',
-  invalid_date: 'The calendar source contained an invalid date.',
-  invalid_interval: 'The calendar source contained an invalid stay interval.',
-  invalid_input: 'The calendar source returned malformed iCalendar data.',
-  invalid_line: 'The calendar source returned malformed iCalendar data.',
-  line_too_long: 'The calendar source returned an oversized iCalendar line.',
-  missing_property: 'The calendar source returned an incomplete event.',
-  duplicate_property: 'The calendar source returned a duplicate event property.',
-  invalid_uid: 'The calendar source returned an invalid event identifier.',
-  invalid_sequence: 'The calendar source returned an invalid event version.',
-  invalid_timestamp: 'The calendar source returned an invalid event timestamp.',
-  invalid_status: 'The calendar source returned an unsupported event status.',
-  text_too_long: 'The calendar source returned oversized event text.',
-  invalid_transparency: 'The calendar source returned unsupported event transparency.',
-  unsupported_recurrence: 'The calendar source contained unsupported recurrence data.',
+  ...ICAL_SOURCE_ERROR_MESSAGES,
   availability_conflict: 'The calendar source could not update availability.',
   sync_failed: 'Calendar synchronization failed.',
 });
@@ -193,13 +161,7 @@ export function mapPersistenceError(error: unknown): AdminHttpError {
   ) {
     return new AdminHttpError(409, 'conflict', 'The admin operation could not be applied.');
   }
-  if (
-    code !== undefined &&
-    (code.endsWith('_validation') ||
-      code.startsWith('invalid_') ||
-      code === 'rate_validation' ||
-      code === 'invalid_stay')
-  ) {
+  if (code !== undefined && (code.endsWith('_validation') || code.startsWith('invalid_'))) {
     const record = error as Record<string, unknown>;
     const errors = record['errors'];
     return new AdminHttpError(
@@ -333,19 +295,17 @@ function safeTimestamp(value: string | null): string | null {
 }
 
 export function serializeHealth(sourceId: string, result: ICalSyncHealth): Record<string, unknown> {
+  const code =
+    result.error !== null &&
+    Object.prototype.hasOwnProperty.call(SAFE_ICAL_ERRORS, result.error.code)
+      ? result.error.code
+      : 'sync_failed';
   const error =
     result.error === null
       ? null
       : {
-          code: Object.prototype.hasOwnProperty.call(SAFE_ICAL_ERRORS, result.error.code)
-            ? result.error.code
-            : 'sync_failed',
-          message:
-            SAFE_ICAL_ERRORS[
-              Object.prototype.hasOwnProperty.call(SAFE_ICAL_ERRORS, result.error.code)
-                ? result.error.code
-                : 'sync_failed'
-            ],
+          code,
+          message: SAFE_ICAL_ERRORS[code],
         };
   return Object.freeze({
     sourceId,

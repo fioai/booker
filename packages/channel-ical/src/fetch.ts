@@ -86,7 +86,6 @@ export type ICalTransport = (
 export type ICalHostResolver = (hostname: string) => Promise<readonly string[]>;
 
 export interface ICalFetchOptions {
-  readonly allowHttp?: boolean;
   readonly maxRedirects?: number;
   readonly timeoutMs?: number;
   readonly maxBodyBytes?: number;
@@ -517,8 +516,6 @@ function validateResponse(response: ICalTransportResponse): void {
 }
 
 export function createICalFetcher(options: ICalFetchOptions = {}): ICalFetcher {
-  // Kept in the options type for source compatibility; this boundary is HTTPS-only.
-  void options.allowHttp;
   const maxRedirects = boundedOption(
     options.maxRedirects,
     ICAL_FETCH_LIMITS.maxRedirects,
@@ -598,11 +595,4 @@ export function createICalFetcher(options: ICalFetchOptions = {}): ICalFetcher {
       }
     },
   };
-}
-
-export async function fetchICalFeed(
-  url: string | URL,
-  options: ICalFetchOptions = {},
-): Promise<ICalFetchedFeed> {
-  return createICalFetcher(options).fetch(url);
 }

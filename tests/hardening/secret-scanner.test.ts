@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 
 import {
   MAX_RETAINED_RESULTS,
@@ -23,6 +24,24 @@ function databaseUrl(query: string, scheme = 'postgresql'): string {
 }
 
 describe('secret scanning policy', () => {
+  it('accepts reviewed demo images only at their exact paths with unchanged contents', () => {
+    for (const file of [
+      'examples/cabin/public/cabin.jpg',
+      'docs/images/cabin-demo.jpg',
+      'docs/images/owner-inbox.jpg',
+    ]) {
+      const contents = readFileSync(new URL(`../../${file}`, import.meta.url));
+      const candidate = { file, tracked: true, byteLength: contents.length, contents };
+      expect(scanSecretCandidate(candidate).totalFindings, file).toBe(0);
+      expect(scanSecretCandidate({ ...candidate, file: `unreviewed/${file}` }).totalFindings).toBe(
+        1,
+      );
+      const modified = Buffer.from(contents);
+      modified[modified.length - 1] = modified[modified.length - 1]! ^ 1;
+      expect(scanSecretCandidate({ ...candidate, contents: modified }).totalFindings).toBe(1);
+    }
+  });
+
   it('reports every match of the same secret pattern', () => {
     const result = scanSecretCandidate(
       textCandidate(

@@ -26,6 +26,73 @@ const TABLES = [
   'payment_provider_events',
 ];
 const IDENTIFIER_PATTERN = /^[a-z_][a-z0-9_]*$/u;
+const POOL_FAILURE_MESSAGE =
+  'backup/restore PostgreSQL connection failed during verification or cleanup.';
+
+export function observeBackupPool(pool) {
+  let closing = false;
+  let errorObserved = false;
+  const onError = () => {
+    if (!closing) {
+      errorObserved = true;
+    }
+  };
+  pool.on('error', onError);
+  return Object.freeze({
+    pool,
+    beginClosing() {
+      closing = true;
+    },
+    hasError() {
+      return errorObserved;
+    },
+    detach() {
+      pool.removeListener('error', onError);
+    },
+  });
+}
+
+async function endObservedPool(resource, failures) {
+  if (resource === undefined) {
+    return;
+  }
+  resource.beginClosing();
+  try {
+    await resource.pool.end();
+  } catch {
+    failures.push(POOL_FAILURE_MESSAGE);
+  } finally {
+    if (resource.hasError()) {
+      failures.push(POOL_FAILURE_MESSAGE);
+    }
+    resource.detach();
+  }
+}
+
+export async function cleanupBackupResources({
+  targetPool,
+  targetEmptyPool,
+  sourcePool,
+  adminPool,
+  targetCreated,
+  dropTarget,
+}) {
+  const failures = [];
+  await endObservedPool(targetPool, failures);
+  await endObservedPool(targetEmptyPool, failures);
+  await endObservedPool(sourcePool, failures);
+  if (targetCreated && dropTarget !== undefined) {
+    try {
+      await dropTarget();
+    } catch {
+      // Cleanup cannot safely report database-drop details.
+    }
+  }
+  await endObservedPool(adminPool, failures);
+  if (failures.length > 0) {
+    throw new Error(POOL_FAILURE_MESSAGE);
+  }
+}
 
 function help() {
   process.stdout.write(
@@ -92,12 +159,6 @@ function connectionParts(databaseUrl) {
     user,
     password: decodeURIComponent(url.password),
   };
-}
-
-function requireDatabaseUrlWithoutQuery(url) {
-  if (url.search.length > 0) {
-    throw new Error('backup/restore DATABASE_URL must not contain query parameters.');
-  }
 }
 
 function requireConfirmedDatabase(args, expectedDatabase) {
@@ -305,24 +366,26 @@ async function main() {
     throw new Error('backup/restore verification is limited to local and test environments.');
   }
   const parts = connectionParts(config.databaseUrl);
-  requireDatabaseUrlWithoutQuery(parts.url);
   requireLocalDatabaseHost(parts.url);
   const compose = configureBackupCompose(environmentSource);
   requireConfirmedDatabase(process.argv.slice(2), parts.database);
   const schema = config.schema;
   const { Pool } = await import('pg');
-  const sourcePool = new Pool({ connectionString: config.databaseUrl });
+  const sourcePool = observeBackupPool(new Pool({ connectionString: config.databaseUrl }));
   const adminUrl = new URL(parts.url.toString());
   adminUrl.pathname = '/postgres';
-  const adminPool = new Pool({ connectionString: adminUrl.toString() });
+  const adminPool = observeBackupPool(new Pool({ connectionString: adminUrl.toString() }));
   const targetName = 'booking_engine_restore_' + process.pid + '_' + Date.now().toString(36);
   const targetUrl = new URL(parts.url.toString());
   targetUrl.pathname = '/' + targetName;
   let targetCreated = false;
+  let targetEmptyPool;
+  let targetPool;
   let tempDirectory;
+  let successMessage;
   try {
-    await sourcePool.query('SELECT 1');
-    const sourceCounts = await tableCounts(sourcePool, schema);
+    await sourcePool.pool.query('SELECT 1');
+    const sourceCounts = await tableCounts(sourcePool.pool, schema);
     if (
       sourceCounts.organizations < 1 ||
       sourceCounts.properties < 1 ||
@@ -332,11 +395,12 @@ async function main() {
         'source database must contain migrated property and rate data before backup.',
       );
     }
-    await adminPool.query('CREATE DATABASE ' + quoteIdentifier(targetName));
+    await adminPool.pool.query('CREATE DATABASE ' + quoteIdentifier(targetName));
     targetCreated = true;
-    const targetEmptyPool = new Pool({ connectionString: targetUrl.toString() });
+    targetEmptyPool = observeBackupPool(new Pool({ connectionString: targetUrl.toString() }));
+    const targetEmptyFailures = [];
     try {
-      const targetTables = await targetEmptyPool.query(
+      const targetTables = await targetEmptyPool.pool.query(
         'SELECT COUNT(*)::int AS count FROM information_schema.tables WHERE table_schema = $1 AND table_name = ANY($2::text[])',
         [schema, TABLES],
       );
@@ -344,7 +408,11 @@ async function main() {
         throw new Error('restore target was not empty before pg_restore.');
       }
     } finally {
-      await targetEmptyPool.end();
+      await endObservedPool(targetEmptyPool, targetEmptyFailures);
+      targetEmptyPool = undefined;
+    }
+    if (targetEmptyFailures.length > 0) {
+      throw new Error(POOL_FAILURE_MESSAGE);
     }
     const dump = await runPostgresTool('pg_dump', compose, parts, parts.database);
     if (dump.byteLength < 128) {
@@ -355,31 +423,34 @@ async function main() {
     await writeFile(dumpPath, dump, { mode: 0o600 });
     const restoreInput = await readFile(dumpPath);
     await runPostgresTool('pg_restore', compose, parts, targetName, restoreInput);
-    const targetPool = new Pool({ connectionString: targetUrl.toString() });
-    try {
-      await targetPool.query('SELECT 1');
-      const restoredCounts = await verifySnapshot(targetPool, schema, sourceCounts);
-      process.stdout.write(
-        'Backup/restore passed: custom dump bytes=' +
-          dump.byteLength +
-          '; verified tables=' +
-          Object.keys(restoredCounts).length +
-          '; overlap, foreign-key, and row-count invariants passed.\n',
-      );
-    } finally {
-      await targetPool.end();
-    }
+    targetPool = observeBackupPool(new Pool({ connectionString: targetUrl.toString() }));
+    await targetPool.pool.query('SELECT 1');
+    const restoredCounts = await verifySnapshot(targetPool.pool, schema, sourceCounts);
+    successMessage =
+      'Backup/restore passed: custom dump bytes=' +
+      dump.byteLength +
+      '; verified tables=' +
+      Object.keys(restoredCounts).length +
+      '; overlap, foreign-key, and row-count invariants passed.\n';
   } finally {
-    await sourcePool.end();
-    if (targetCreated) {
-      await adminPool
-        .query('DROP DATABASE ' + quoteIdentifier(targetName) + ' WITH (FORCE)')
-        .catch(() => undefined);
+    try {
+      await cleanupBackupResources({
+        targetPool,
+        targetEmptyPool,
+        sourcePool,
+        adminPool,
+        targetCreated,
+        dropTarget: () =>
+          adminPool.pool.query('DROP DATABASE ' + quoteIdentifier(targetName) + ' WITH (FORCE)'),
+      });
+    } finally {
+      if (tempDirectory !== undefined) {
+        await rm(tempDirectory, { recursive: true, force: true });
+      }
     }
-    await adminPool.end();
-    if (tempDirectory !== undefined) {
-      await rm(tempDirectory, { recursive: true, force: true });
-    }
+  }
+  if (successMessage !== undefined) {
+    process.stdout.write(successMessage);
   }
 }
 

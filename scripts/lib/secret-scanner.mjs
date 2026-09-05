@@ -1,7 +1,8 @@
 import { URL, URLSearchParams } from 'node:url';
 import { TextDecoder } from 'node:util';
+import { createHash } from 'node:crypto';
 
-export const MAX_SCANNABLE_BYTES = 2 * 1024 * 1024;
+export const MAX_SCANNABLE_BYTES = 4 * 1024 * 1024;
 export const MAX_RETAINED_RESULTS = 32;
 const MAX_DATABASE_URL_LENGTH = 8 * 1024;
 const MAX_DATABASE_URL_CANDIDATES = 1024;
@@ -39,6 +40,34 @@ const SAFE_DATABASE_PASSWORDS = new Set(['local-only-placeholder', 'replace_me_l
 const SAFE_COMPOSE_DATABASE_USERINFO =
   '${POSTGRES_USER:-booking_engine_local}:${POSTGRES_PASSWORD:-local-only-placeholder}';
 const UTF8_DECODER = new TextDecoder('utf-8', { fatal: true });
+
+// Reviewed pixels and metadata, bound to exact paths and SHA-256 contents in every scan source.
+// See docs/security/secret-scanning.md. A new or changed binary still fails closed.
+const REVIEWED_DEMO_IMAGES = new Map([
+  [
+    'examples/cabin/public/cabin.jpg',
+    ['bf2c83bdffd897050828a39d5ef2f2957e5b8fb79a85c94d71aac1b96691b3a5'],
+  ],
+  [
+    'examples/cabin/public/cabin.png',
+    ['492f3cf6b1727df5bef3b267a98cfc9a521ef8cf6bd8ce919575ee22d8115790'],
+  ],
+  [
+    'docs/images/cabin-demo.jpg',
+    [
+      '308ba73b62b061a86715d17c897c2691273add7fc2b917c99c23e24888042806',
+      'a9eba6ee33e494e465ffb4e63207e447447681bf5a776c2b77b73f24416a16b9',
+      '0006a1b513ca714f201aaaaecec2ac9591dab7aaa9412b80d098510489af3aa7',
+    ],
+  ],
+  [
+    'docs/images/owner-inbox.jpg',
+    [
+      '0d0053356d6aefa711f281e3f3ca6214bf2de43f0026a632a54448ef28596b4e',
+      '442c80ef7a701f4be25d703d03ff5307bda67694145a27d0a14f808c32af2c90',
+    ],
+  ],
+]);
 
 const SECRET_PATTERNS = Object.freeze([
   {
@@ -787,6 +816,29 @@ export function scanSecretCandidate(candidate) {
   }
   if (candidate.contents === undefined) {
     return uninspectable(candidate, 'unreadable-file');
+  }
+  const reviewedHashes = REVIEWED_DEMO_IMAGES.get(candidate.file);
+  if (
+    reviewedHashes !== undefined &&
+    candidate.byteLength === candidate.contents.byteLength &&
+    reviewedHashes.includes(createHash('sha256').update(candidate.contents).digest('hex'))
+  ) {
+    return {
+      findings: [],
+      placeholders: [
+        {
+          file: candidate.file,
+          line: null,
+          name: 'reviewed-demo-image',
+          tracked: candidate.tracked,
+        },
+      ],
+      inspected: true,
+      totalFindings: 0,
+      totalPlaceholders: 1,
+      truncatedFindings: 0,
+      truncatedPlaceholders: 0,
+    };
   }
   if (hasSuffix(candidate.file, BINARY_SUFFIXES) || candidate.contents.includes(0)) {
     return uninspectable(candidate, 'binary-file');

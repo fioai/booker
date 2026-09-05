@@ -21,6 +21,7 @@ import { createQuoteSnapshot, type QuoteBreakdown } from '@booking-engine/bookin
 
 import { PersistenceError, isPostgresError } from '../database/errors.js';
 import { lockProperty } from '../database/property-lock.js';
+import { requireProperty } from '../database/property-guards.js';
 import type { PostgresDatabasePort, PostgresTransactionPort } from '../database/postgres.js';
 import { qualifiedTable } from '../database/identifiers.js';
 
@@ -293,27 +294,6 @@ function validateWebhookEvent(event: PaymentWebhookEvent): PaymentWebhookEvent {
 
 function requireDateClock(clock: () => Date): Date {
   return timestamp(clock(), 'clock');
-}
-
-function requireProperty(
-  transaction: PostgresTransactionPort,
-  propertiesTable: string,
-  organizationId: string,
-  propertyId: string,
-): Promise<void> {
-  return transaction
-    .query(`SELECT id FROM ${propertiesTable} WHERE organization_id = $1 AND id = $2`, [
-      organizationId,
-      propertyId,
-    ])
-    .then((result) => {
-      if (result.rowCount === 0) {
-        throw new PersistenceError(
-          'property_not_found',
-          'property does not exist in this organization.',
-        );
-      }
-    });
 }
 
 export class PostgresPaymentCheckoutRepository implements PaymentCheckoutRepository {

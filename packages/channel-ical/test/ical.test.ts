@@ -2,18 +2,15 @@ import { readFile } from 'node:fs/promises';
 import { createServer, request as httpRequest } from 'node:http';
 
 import { describe, expect, it, vi } from 'vitest';
-import {
-  createICalSyncJob,
-  recheckAvailabilityBeforeCommit,
-} from '../../../apps/api/src/jobs/ical/sync.js';
+import { createICalSyncJob } from '../../../apps/api/src/jobs/ical/sync.js';
 
 import {
   ICalFetchError,
   createICalFetcher,
+  type ICalFetcher,
   type ICalTransportBody,
   type ICalTransportResponse,
 } from '../src/fetch.js';
-import { createICalChannel } from '../src/index.js';
 import { ICalParseError, parseICalCalendar, type ICalEvent } from '../src/parse.js';
 import {
   createMemoryICalBlockStore,
@@ -22,7 +19,6 @@ import {
   type ICalScope,
 } from '../src/reconcile.js';
 import { exportICalCalendar } from '../src/export.js';
-import { createFixedClock } from '../../test-support/src/index.js';
 
 const scopeA: ICalScope = { organizationId: 'org-a', propertyId: 'property-a' };
 const scopeB: ICalScope = { organizationId: 'org-b', propertyId: 'property-a' };
@@ -1235,16 +1231,18 @@ describe('direct reservation iCalendar export', () => {
   });
 });
 
-describe('sync health and immediate approval/payment availability recheck', () => {
+describe('sync health', () => {
   it('records the success timestamp when reconciliation completes', async () => {
     let now = '2026-07-12T12:00:00.000Z';
     const clock = { now: () => new Date(now) };
     const job = createICalSyncJob({
       clock,
       store: createMemoryICalBlockStore(),
-      fetchFeed: async () => {
-        now = '2026-07-12T12:00:03.000Z';
-        return fixture('valid-airbnb.ics');
+      fetcher: {
+        async fetch(url) {
+          now = '2026-07-12T12:00:03.000Z';
+          return { body: await fixture('valid-airbnb.ics'), finalUrl: String(url) };
+        },
       },
     });
 
@@ -1261,18 +1259,21 @@ describe('sync health and immediate approval/payment availability recheck', () =
   });
 
   it('records last attempt, last success, stale, and safe error state through the real job', async () => {
-    const clock = createFixedClock('2026-07-12T12:00:00.000Z');
+    const clock = { now: () => new Date('2026-07-12T12:00:00.000Z') };
     const store = createMemoryICalBlockStore();
-    const fetchFeed = vi
-      .fn<(url: string) => Promise<string>>()
-      .mockResolvedValueOnce(await fixture('valid-airbnb.ics'))
+    const fetch = vi
+      .fn<ICalFetcher['fetch']>()
+      .mockResolvedValueOnce({
+        body: await fixture('valid-airbnb.ics'),
+        finalUrl: 'https://calendar.example/feed.ics',
+      })
       .mockRejectedValueOnce(
         new ICalFetchError('http_error', 'calendar source returned an error.'),
       );
     const job = createICalSyncJob({
       clock,
       store,
-      fetchFeed,
+      fetcher: { fetch },
       staleAfterMs: 60_000,
     });
     const config = {
@@ -1315,13 +1316,12 @@ describe('sync health and immediate approval/payment availability recheck', () =
   ])('preserves the safe $code sync error', async ({ code, message, properties }) => {
     const job = createICalSyncJob({
       store: createMemoryICalBlockStore(),
-      fetchFeed: async () =>
-        calendarFeed([
-          {
-            uid: `${code}@example.invalid`,
-            properties,
-          },
-        ]),
+      fetcher: {
+        fetch: async (url) => ({
+          body: calendarFeed([{ uid: `${code}@example.invalid`, properties }]),
+          finalUrl: String(url),
+        }),
+      },
     });
 
     const result = await job.run({
@@ -1334,68 +1334,5 @@ describe('sync health and immediate approval/payment availability recheck', () =
     expect(result.health.error).toEqual({ code, message });
     expect(JSON.stringify(result)).not.toContain('secret');
     expect(JSON.stringify(result)).not.toContain('calendar.example');
-  });
-
-  it('rechecks the tenant-scoped stay immediately before approval or payment', async () => {
-    const isAvailable = vi.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(false);
-    const dependencies = { isAvailable };
-    const stay = { arrival: '2026-10-10', departure: '2026-10-13' };
-
-    await expect(
-      recheckAvailabilityBeforeCommit(dependencies, scopeA, stay),
-    ).resolves.toBeUndefined();
-    await expect(recheckAvailabilityBeforeCommit(dependencies, scopeA, stay)).rejects.toMatchObject(
-      {
-        code: 'stay_unavailable',
-      },
-    );
-    expect(isAvailable).toHaveBeenNthCalledWith(1, scopeA, 'property-a', stay);
-    expect(isAvailable).toHaveBeenNthCalledWith(2, scopeA, 'property-a', stay);
-  });
-});
-
-describe('iCalendar channel provenance', () => {
-  it('imports explicit cancellations as cancellation records instead of silently dropping them', async () => {
-    const channel = createICalChannel({
-      sourceId,
-      url: 'https://calendar.example/feed.ics',
-      fetcher: {
-        fetch: vi.fn(async () => ({
-          body: await fixture('cancelled-event.ics'),
-          finalUrl: 'https://calendar.example/feed.ics',
-        })),
-      },
-    });
-
-    await expect(channel.importBlocks()).resolves.toMatchObject([
-      {
-        source: sourceId,
-        externalId: 'airbnb-booking-001@example.invalid',
-        status: 'cancelled',
-      },
-    ]);
-  });
-
-  it('rejects EXRULE that excludes DTSTART instead of emitting an active block', async () => {
-    const feed = calendarFeed([
-      {
-        uid: 'excluded-by-exrule@example.invalid',
-        properties: ['EXRULE:FREQ=DAILY;COUNT=1'],
-      },
-    ]);
-    const channel = createICalChannel({
-      sourceId,
-      url: 'https://calendar.example/feed.ics',
-      fetcher: {
-        fetch: vi.fn(async () => ({
-          body: feed,
-          finalUrl: 'https://calendar.example/feed.ics',
-        })),
-      },
-    });
-
-    await expect(channel.importBlocks()).rejects.toMatchObject({
-      code: 'unsupported_recurrence',
-    });
   });
 });

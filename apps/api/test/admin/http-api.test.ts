@@ -729,7 +729,10 @@ describe('owner admin over the real same-domain HTTP server', () => {
         properties: { findPublicById: vi.fn(async () => publicProperty) },
         availability: { isAvailable: vi.fn(async () => true) },
         rates: { quote: vi.fn(async () => request.quote) },
-        bookingRequests: { submit: vi.fn(async () => request) },
+        bookingRequests: {
+          findByIdempotencyKey: vi.fn(async () => null),
+          submit: vi.fn(async () => request),
+        },
       },
       {
         scope: { organizationId: organizationA },

@@ -1,4 +1,5 @@
 /* global URL */
+import { isIP } from 'node:net';
 
 const ENVIRONMENTS = new Set(['local', 'test', 'staging', 'production']);
 
@@ -20,6 +21,45 @@ const APP_IDENTIFIER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/u;
 const PORT_MIN = 1;
 const PORT_MAX = 65_535;
 const PASSWORD_MARKER_PATTERN = /(?:replace_me|local-only-placeholder|example\.test)/iu;
+const APPROVED_TLS_PARAMETER = 'sslmode';
+const APPROVED_TLS_MODE = 'verify-full';
+
+function isDeploymentEnvironment(environment) {
+  return environment === 'production' || environment === 'staging';
+}
+
+function isLoopbackDatabaseHost(hostname) {
+  const normalized = hostname.toLowerCase();
+  if (
+    normalized === 'localhost' ||
+    normalized === 'localhost.' ||
+    normalized.endsWith('.localhost')
+  ) {
+    return true;
+  }
+
+  const literal =
+    normalized.startsWith('[') && normalized.endsWith(']') ? normalized.slice(1, -1) : normalized;
+  if (literal === '0' || literal === '0.0.0.0' || literal === '::' || literal === '::1') {
+    return true;
+  }
+  if (literal.startsWith('::ffff:7f')) {
+    return true;
+  }
+  if (isIP(literal) === 4) {
+    return literal.startsWith('127.');
+  }
+  return normalized.startsWith('127.');
+}
+
+function hasApprovedTlsMode(url) {
+  const parameters = [...url.searchParams.entries()];
+  return (
+    parameters.length === 1 &&
+    parameters[0]?.[0] === APPROVED_TLS_PARAMETER &&
+    parameters[0]?.[1] === APPROVED_TLS_MODE
+  );
+}
 
 export class EnvironmentValidationError extends Error {
   constructor(message) {
@@ -77,8 +117,12 @@ export function validateDatabaseUrl(value, environment = 'local') {
     throw new EnvironmentValidationError('DATABASE_URL is required.');
   }
   let url;
+  let username;
+  let password;
   try {
     url = new URL(value);
+    username = decodeURIComponent(url.username);
+    password = decodeURIComponent(url.password);
   } catch {
     throw new EnvironmentValidationError('DATABASE_URL must be a valid PostgreSQL URL.');
   }
@@ -87,17 +131,46 @@ export function validateDatabaseUrl(value, environment = 'local') {
       'DATABASE_URL must use the postgres or postgresql scheme.',
     );
   }
-  if (url.hostname.length === 0 || url.username.length === 0) {
+  if (url.hostname.length === 0 || username.length === 0) {
     throw new EnvironmentValidationError('DATABASE_URL must include a database host and user.');
   }
+
+  const deployment = isDeploymentEnvironment(environment);
+  if (deployment && password.length === 0) {
+    throw new EnvironmentValidationError(
+      'DATABASE_URL must include a non-empty password in staging or production.',
+    );
+  }
   if (
-    environment === 'production' &&
+    deployment &&
     (PASSWORD_MARKER_PATTERN.test(value) ||
-      url.hostname === '127.0.0.1' ||
-      url.hostname === 'localhost')
+      PASSWORD_MARKER_PATTERN.test(username) ||
+      PASSWORD_MARKER_PATTERN.test(password))
   ) {
     throw new EnvironmentValidationError(
-      'DATABASE_URL contains a local placeholder or loopback host.',
+      'DATABASE_URL must not contain placeholder credentials in staging or production.',
+    );
+  }
+  if (deployment && isLoopbackDatabaseHost(url.hostname)) {
+    throw new EnvironmentValidationError(
+      'DATABASE_URL must use a non-loopback host in staging or production.',
+    );
+  }
+
+  const parameters = [...url.searchParams.entries()];
+  if (parameters.some(([name]) => name !== APPROVED_TLS_PARAMETER)) {
+    throw new EnvironmentValidationError(
+      'DATABASE_URL query parameters must be limited to sslmode=verify-full.',
+    );
+  }
+  if (parameters.some(([name]) => name === APPROVED_TLS_PARAMETER) && !hasApprovedTlsMode(url)) {
+    throw new EnvironmentValidationError(
+      'DATABASE_URL must use sslmode=verify-full for certificate-verified PostgreSQL TLS.',
+    );
+  }
+  if (deployment && !hasApprovedTlsMode(url)) {
+    throw new EnvironmentValidationError(
+      'DATABASE_URL must use sslmode=verify-full for certificate-verified PostgreSQL TLS in staging or production.',
     );
   }
   return url.toString();

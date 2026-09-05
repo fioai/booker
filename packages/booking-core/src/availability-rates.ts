@@ -2,7 +2,6 @@ import { ISO_4217_ACTIVE_CODES } from './iso-4217-active.js';
 import type { Result } from './property/configuration/types.js';
 
 const RATE_PLAN_BRAND: unique symbol = Symbol('RatePlan');
-const canonicalRatePlans = new WeakSet<object>();
 
 export const AVAILABILITY_RATES_LIMITS = Object.freeze({
   minimumYear: 1,
@@ -12,11 +11,6 @@ export const AVAILABILITY_RATES_LIMITS = Object.freeze({
   maximumMinimumStayNights: 3660,
   maximumMinorAmount: 1_000_000_000,
 });
-
-export interface LocalDateIntervalInput {
-  readonly arrival: string;
-  readonly departure: string;
-}
 
 export interface LocalDateInterval {
   readonly arrival: string;
@@ -437,7 +431,6 @@ export function createRatePlan(input: unknown): AvailabilityRatesResult<RatePlan
     minimumStayNights,
     seasonalOverrides: Object.freeze(overrides),
   }) as RatePlan;
-  canonicalRatePlans.add(ratePlan);
   return success(ratePlan);
 }
 
@@ -511,8 +504,4 @@ export function quoteRatePlan(
       minimumStayNights: ratePlan.minimumStayNights,
     }),
   );
-}
-
-export function isRatePlan(value: unknown): value is RatePlan {
-  return isRecord(value) && canonicalRatePlans.has(value);
 }

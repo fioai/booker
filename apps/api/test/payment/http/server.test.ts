@@ -19,6 +19,7 @@ const publicDependencies: PublicBookingApiDependencies = {
     }),
   },
   bookingRequests: {
+    findByIdempotencyKey: vi.fn(async () => null),
     submit: vi.fn(async () => {
       throw new Error('unused');
     }),

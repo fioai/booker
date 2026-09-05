@@ -75,7 +75,7 @@ export const RATE_FIELDS = new Set([
 export const RATE_OVERRIDE_FIELDS = new Set(['arrival', 'departure', 'nightlyRateMinor']);
 export const MANUAL_BLOCK_FIELDS = new Set(['id', 'arrival', 'departure', 'reason']);
 
-export function propertyUpdateInput(
+function propertyUpdateInput(
   property: PropertyConfiguration,
   body: Record<string, unknown>,
 ): PropertyConfigurationInput {
@@ -83,21 +83,10 @@ export function propertyUpdateInput(
   if (keys.length === 0) {
     validationError([{ field: 'body', code: 'invalid_input' }]);
   }
-  const isContentUpdate = keys.every((key) => CONTENT_FIELDS.has(key));
-  const isFullUpdate = keys.every((key) => PROPERTY_FIELDS.has(key));
-  if (!isContentUpdate && !isFullUpdate) {
-    requireAllowedKeys(body, PROPERTY_FIELDS);
-    validationError([{ field: 'body', code: 'invalid_input' }]);
-  }
-  const input: Record<string, unknown> = isContentUpdate
-    ? { ...propertyInput(property) }
+  requireAllowedKeys(body, PROPERTY_FIELDS);
+  const input = keys.every((key) => CONTENT_FIELDS.has(key))
+    ? { ...propertyInput(property), ...body }
     : { ...body };
-  if (isContentUpdate) {
-    for (const field of keys) {
-      input[field] = body[field] as never;
-    }
-  }
-  requireAllowedKeys(input, PROPERTY_FIELDS);
   return input as unknown as PropertyConfigurationInput;
 }
 

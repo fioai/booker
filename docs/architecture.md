@@ -13,14 +13,13 @@ package is planned for the first release.
 ## Dependency direction
 
 ```text
-channel-ical -> channel-calendar
 payments-stripe -> payments
 database-postgres -> booking-core, payments, channel-ical
 apps/api -> booking-core, database-postgres, channel-ical, payments, sdk-typescript
 ```
 
-The SDK has no workspace or runtime dependencies. `notifications`, `channel-calendar`,
-`booking-core`, `payments`, and `test-support` do not depend on other workspace packages.
+The SDK has no workspace or runtime dependencies. `channel-ical`, `booking-core`, and
+`payments` do not depend on other workspace packages. Shared test helpers live with the tests.
 Composite TypeScript references mirror runtime workspace dependencies and are checked by
 `pnpm check:architecture`.
 
@@ -92,6 +91,10 @@ apps/api/src/
 
 The unified server is the only binding. `apps/admin` is intentionally absent.
 
+The iCalendar sync job fetches, parses, and reconciles feeds directly. Approval and payment
+repositories perform availability checks inside their transactions; there is no separate
+pre-commit hook to wire up. Notification delivery has no placeholder workspace package.
+
 ## Canonical ownership and privacy
 
 PostgreSQL `public_properties` is a privacy-minimized SQL view. The repository validates its
@@ -147,11 +150,11 @@ authoritative root [release checklist](../README.md#development-and-release-gate
 release needs the real PostgreSQL service and a running Docker engine. An unavailable service or
 engine blocks the release; mocked evidence does not replace either gate.
 
-The local `pnpm scan:secrets` command scans tracked worktree files, non-ignored untracked files,
-and staged index snapshots. Ignored secret-bearing files require separate inspection. Git-history
-scanning is separate: before public release and after any suspected leak, use repository-host and
-Git-history secret scanning. Revoke or rotate every exposed credential, and purge or rewrite
-history where required. Rewriting history does not replace credential revocation or rotation.
+The local `corepack pnpm scan:secrets` command scans tracked worktree files, non-ignored untracked
+files, and staged index snapshots. Ignored secret-bearing files require separate inspection.
+Git-history scanning uses `corepack pnpm scan:history`; run it before public release and after any
+suspected leak. Revoke or rotate every exposed credential, and purge or rewrite history where
+required. Rewriting history does not replace credential revocation or rotation.
 
 ## External storefront integration
 

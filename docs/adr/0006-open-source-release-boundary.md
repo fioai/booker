@@ -9,10 +9,11 @@ The first open-source release keeps the deployment as one modular monolith. We w
 introduce a service split or a new generic `common`, `kernel`, or `booking-application`
 package.
 
-`@booking-engine/sdk-typescript` is the only first-release public package. It is released as
-version `0.1.0` and has no workspace dependencies. `booking-core`, `database-postgres`,
-`payments`, `payments-stripe`, `channel-calendar`, `channel-ical`, `notifications`, and
-`test-support` remain private implementation or test packages.
+`@booking-engine/sdk-typescript` is the only intended first-release public package. Version `0.1.0`
+is an unpublished release candidate; publish it only after the annotated `v0.1.0` tag and registry
+publication with provenance. The package has no workspace dependencies. `booking-core`,
+`database-postgres`, `payments`, `payments-stripe`, and `channel-ical` remain private
+implementation packages.
 
 The owner admin is a same-origin, server-rendered reference surface owned by `apps/api`.
 External consumers use the public SDK and never import admin, database, or domain internals.
@@ -24,13 +25,11 @@ live Stripe payments, notification transport, or background scheduling.
 
 The intended workspace edges are:
 
-- `channel-ical -> channel-calendar`;
 - `payments-stripe -> payments`;
 - `database-postgres -> booking-core, payments, channel-ical`;
 - `apps/api -> booking-core, database-postgres, channel-ical, payments, sdk-typescript`.
 
-The SDK, core, calendar, payments, notifications, and test-support packages have no other
-runtime workspace dependencies.
+The SDK, core, iCalendar, and payments packages have no other runtime workspace dependencies.
 
 ## Consequences
 
@@ -40,5 +39,7 @@ runtime workspace dependencies.
   serialization.
 - Internal package renames and removal of unused compatibility exports are breaking changes
   inside an unreleased workspace; no aliases are retained.
+- Unused notification and calendar-channel scaffolding is removed. Test helpers live with
+  tests rather than in a separate workspace package.
 - Live payment activation, notification delivery, and worker/scheduler behavior remain
   explicit future boundaries rather than implied features.

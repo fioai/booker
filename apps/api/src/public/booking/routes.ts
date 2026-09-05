@@ -1,8 +1,11 @@
-import { PUBLIC_BOOKING_PATHS_V1 } from '@booking-engine/sdk-typescript';
+import {
+  PUBLIC_BOOKING_PATHS_V1,
+  type PublicBookingOperationKeyV1,
+} from '@booking-engine/sdk-typescript';
 
 export type PublicBookingRoute =
   | {
-      readonly resource: 'property' | 'availability' | 'quote' | 'requestToBook';
+      readonly resource: PublicBookingOperationKeyV1;
       readonly propertyId: string;
       readonly url: URL;
     }
@@ -26,23 +29,11 @@ export function parsePublicBookingRoute(path: string): PublicBookingRoute {
     return undefined;
   }
   const encodedPropertyId = encodeURIComponent(propertyId);
-  const paths = {
-    property: PUBLIC_BOOKING_PATHS_V1.property.replace('{propertyId}', encodedPropertyId),
-    availability: PUBLIC_BOOKING_PATHS_V1.availability.replace('{propertyId}', encodedPropertyId),
-    quote: PUBLIC_BOOKING_PATHS_V1.quote.replace('{propertyId}', encodedPropertyId),
-    requestToBook: PUBLIC_BOOKING_PATHS_V1.requestToBook.replace('{propertyId}', encodedPropertyId),
-  };
-  if (url.pathname === paths.property) {
-    return { resource: 'property', propertyId, url };
-  }
-  if (url.pathname === paths.availability) {
-    return { resource: 'availability', propertyId, url };
-  }
-  if (url.pathname === paths.quote) {
-    return { resource: 'quote', propertyId, url };
-  }
-  if (url.pathname === paths.requestToBook) {
-    return { resource: 'requestToBook', propertyId, url };
+  for (const resource of Object.keys(PUBLIC_BOOKING_PATHS_V1) as PublicBookingOperationKeyV1[]) {
+    const path = PUBLIC_BOOKING_PATHS_V1[resource].replace('{propertyId}', encodedPropertyId);
+    if (url.pathname === path) {
+      return { resource, propertyId, url };
+    }
   }
   return undefined;
 }

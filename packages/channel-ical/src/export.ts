@@ -1,5 +1,7 @@
 import { TextEncoder } from 'node:util';
 
+import { validDate, intervalNights } from './local-date.js';
+
 export const ICAL_EXPORT_LIMITS = Object.freeze({
   maxReservations: 1_000,
   maxUidLength: 512,
@@ -22,48 +24,6 @@ export interface ICalExportInput {
 }
 
 const textEncoder = new TextEncoder();
-
-function dayNumber(year: number, month: number, day: number): number {
-  const adjustedYear = year - (month <= 2 ? 1 : 0);
-  const era = Math.floor(adjustedYear / 400);
-  const yearOfEra = adjustedYear - era * 400;
-  const monthOfYear = month + (month > 2 ? -3 : 9);
-  const dayOfYear = Math.floor((153 * monthOfYear + 2) / 5) + day - 1;
-  const dayOfEra =
-    yearOfEra * 365 + Math.floor(yearOfEra / 4) - Math.floor(yearOfEra / 100) + dayOfYear;
-  return era * 146097 + dayOfEra;
-}
-
-function validDate(value: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/u.test(value)) {
-    return false;
-  }
-  const year = Number(value.slice(0, 4));
-  const month = Number(value.slice(5, 7));
-  const day = Number(value.slice(8, 10));
-  if (year < 1 || year > 9999 || month < 1 || month > 12 || day < 1 || day > 31) {
-    return false;
-  }
-  const nextMonth = month === 12 ? 1 : month + 1;
-  const nextYear = month === 12 ? year + 1 : year;
-  const current = dayNumber(year, month, day);
-  return current >= dayNumber(year, month, 1) && current < dayNumber(nextYear, nextMonth, 1);
-}
-
-function nights(arrival: string, departure: string): number {
-  return (
-    dayNumber(
-      Number(departure.slice(0, 4)),
-      Number(departure.slice(5, 7)),
-      Number(departure.slice(8, 10)),
-    ) -
-    dayNumber(
-      Number(arrival.slice(0, 4)),
-      Number(arrival.slice(5, 7)),
-      Number(arrival.slice(8, 10)),
-    )
-  );
-}
 
 function safeText(value: string, field: string): string {
   let normalized = '';
@@ -209,7 +169,7 @@ function validateReservation(reservation: ICalExportReservation): void {
   if (!validDate(reservation.arrival) || !validDate(reservation.departure)) {
     throw new TypeError('reservation arrival and departure must be valid dates.');
   }
-  const stayNights = nights(reservation.arrival, reservation.departure);
+  const stayNights = intervalNights(reservation.arrival, reservation.departure);
   if (stayNights <= 0 || stayNights > ICAL_EXPORT_LIMITS.maxNights) {
     throw new TypeError('reservation departure must be after arrival within the supported bound.');
   }

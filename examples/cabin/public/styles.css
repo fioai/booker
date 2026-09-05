@@ -1,0 +1,466 @@
+:root {
+  font-family:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+  color: #292e29;
+  background: #fff;
+  font-synthesis: none;
+  --green: #355c46;
+  --muted: #62675f;
+  --line: #dedfd8;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.6;
+}
+[hidden] {
+  display: none !important;
+}
+a {
+  color: inherit;
+  text-underline-offset: 0.2em;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+:focus-visible {
+  outline: 3px solid #9a602c;
+  outline-offset: 3px;
+}
+button {
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 0.7rem 1rem;
+  color: #fff;
+  background: var(--green);
+  font-weight: 600;
+}
+button:hover {
+  background: #274534;
+}
+button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+input,
+select,
+textarea {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  margin-top: 0.3rem;
+  padding: 0.65rem;
+  border: 1px solid #b6bcb2;
+  border-radius: 3px;
+  background: #fff;
+  color: inherit;
+}
+textarea {
+  resize: vertical;
+}
+label {
+  display: block;
+  min-width: 0;
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+form {
+  margin: 0;
+}
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+h1,
+h2,
+h3 {
+  line-height: 1.35;
+  font-weight: 600;
+}
+h1 {
+  font-size: 1.625rem;
+  letter-spacing: -0.02em;
+  margin-bottom: 1rem;
+  overflow-wrap: anywhere;
+}
+h2 {
+  font-size: 1.125rem;
+  margin-bottom: 0.75rem;
+}
+h3 {
+  font-size: 1rem;
+  margin-bottom: 0.75rem;
+}
+p {
+  margin-bottom: 1rem;
+}
+.wrap {
+  width: min(1120px, calc(100% - 4rem));
+  margin-inline: auto;
+}
+.demo-bar {
+  padding: 0.45rem 1rem;
+  text-align: center;
+  border-bottom: 1px solid var(--line);
+  background: #f4f4f0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.demo-bar a {
+  margin-left: 0.75rem;
+}
+.site-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding-block: 1.25rem;
+  border-bottom: 1px solid var(--line);
+}
+.brand {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 650;
+  text-decoration: none;
+}
+.brand a {
+  text-decoration: inherit;
+}
+nav {
+  display: flex;
+  gap: 1.5rem;
+  font-size: 0.9375rem;
+}
+nav a {
+  text-decoration: none;
+}
+nav a:hover {
+  text-decoration: underline;
+}
+.guest-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 350px;
+  gap: 3rem;
+  align-items: start;
+  padding-block: 2rem 3rem;
+}
+.cabin-photo {
+  margin: 0;
+}
+.cabin-photo img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 3px;
+}
+figcaption {
+  margin-top: 0.6rem;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+.property-details {
+  padding-block: 1.5rem;
+  border-bottom: 1px solid var(--line);
+  scroll-margin-top: 1rem;
+}
+.property-details:last-child {
+  border-bottom: 0;
+}
+.property-details p {
+  margin-bottom: 0;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.booking-panel {
+  padding: 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #f8f8f5;
+  scroll-margin-top: 1rem;
+}
+.muted {
+  color: var(--muted);
+}
+.small {
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+.date-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+.contact-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(85px, 1fr);
+  gap: 0.75rem;
+}
+.booking-panel button:not(.text-button) {
+  width: 100%;
+}
+.feedback {
+  font-size: 0.9375rem;
+  margin: 1rem 0;
+}
+.feedback:empty {
+  display: none;
+}
+.feedback[data-error='true'] {
+  color: #963a30;
+}
+.quote {
+  border-top: 1px solid var(--line);
+  padding-top: 1rem;
+  margin-top: 1.25rem;
+}
+dl {
+  margin: 0 0 1rem;
+}
+dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+dd {
+  margin: 0;
+}
+.quote-total {
+  border-top: 1px solid var(--line);
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  font-weight: 600;
+}
+#currency {
+  font-size: 0.875rem;
+  font-weight: 400;
+}
+.form-heading {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+  margin-block: 1.25rem 0.75rem;
+}
+.form-heading h3 {
+  margin: 0;
+}
+.text-button {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--green);
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+.text-button:hover {
+  background: none;
+  color: #1e3828;
+}
+.secondary {
+  background: #e7ece5;
+  color: #294430;
+}
+.secondary:hover {
+  background: #dce4d8;
+}
+.request-result {
+  border-top: 1px solid var(--line);
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+}
+.request-result h3 {
+  margin-top: 1rem;
+}
+.status {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 3px;
+  background: #f3ead1;
+  color: #6e531b;
+  font-size: 0.875rem;
+  text-transform: capitalize;
+}
+.status[data-status='approved'] {
+  background: #e1ecdc;
+  color: #2c4c29;
+}
+.status[data-status='rejected'],
+.status[data-status='expired'] {
+  background: #f0e5e1;
+  color: #814138;
+}
+.reference {
+  overflow-wrap: anywhere;
+}
+.owner-link {
+  display: block;
+  margin-block: 1rem;
+  font-size: 0.875rem;
+}
+.site-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  border-top: 1px solid var(--line);
+  padding-block: 1.25rem;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+.owner-main {
+  padding-block: 2rem;
+}
+.owner-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+.owner-heading h1 {
+  margin-bottom: 0;
+}
+.login-panel {
+  width: min(420px, 100%);
+  margin: 2rem auto;
+}
+.login-panel .text-button {
+  margin-block: 1rem;
+}
+.login-panel p:last-child {
+  margin-bottom: 0;
+}
+.owner-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+.request-list {
+  display: grid;
+  gap: 1rem;
+}
+.request-card {
+  padding: 1.25rem;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem 2rem;
+}
+.request-card h2 {
+  margin-block: 0.75rem 0.25rem;
+}
+.request-card p {
+  margin-bottom: 0.5rem;
+}
+.guest-note {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.request-card .decision-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  align-items: stretch;
+  justify-content: center;
+  min-width: 180px;
+}
+.request-card .feedback {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.empty-state {
+  padding: 2rem;
+  background: #f8f8f5;
+  border: 1px solid var(--line);
+}
+@media (min-width: 961px) {
+  .guest-layout > .booking-panel {
+    position: sticky;
+    top: 1.5rem;
+  }
+}
+@media (max-width: 960px) {
+  .wrap {
+    width: calc(100% - 3rem);
+  }
+  .guest-layout {
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 1.75rem;
+  }
+}
+@media (max-width: 760px) {
+  .wrap {
+    width: calc(100% - 2rem);
+  }
+  .guest-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+    padding-top: 1.5rem;
+  }
+  .site-header {
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+  nav {
+    flex-wrap: wrap;
+    gap: 0.75rem 1.25rem;
+    font-size: 0.875rem;
+  }
+  .booking-panel {
+    padding: 1.25rem;
+  }
+  .owner-heading {
+    align-items: start;
+    flex-direction: column;
+  }
+  .request-card {
+    grid-template-columns: 1fr;
+  }
+  .request-card .decision-controls {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: start;
+  }
+  .site-footer {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+}
+@media (max-width: 420px) {
+  .date-fields {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 380px) {
+  .contact-fields {
+    grid-template-columns: 1fr;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}

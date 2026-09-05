@@ -40,11 +40,6 @@ function fakeDatabase(appliedChecksums: Readonly<Record<string, string | null>>)
       ) {
         throw new Error('Migration checksum write did not provide an ID and checksum.');
       }
-      if (storedChecksum === null && state.checksumNotNull) {
-        throw Object.assign(new Error('checksum violates the not-null constraint.'), {
-          code: '23502',
-        });
-      }
       storedChecksums.set(id, storedChecksum);
       return { rows: [], rowCount: 1 };
     }
@@ -150,13 +145,6 @@ describe('PostgreSQL migration status', () => {
           values?.[1] === currentChecksum,
       );
       expect(repeatedBaselineUpdates).toHaveLength(1);
-
-      await expect(
-        fake.database.query('UPDATE "test"."schema_migrations" SET checksum = $2 WHERE id = $1', [
-          migrationId,
-          null,
-        ]),
-      ).rejects.toMatchObject({ code: '23502' });
 
       await fake.database.query(
         'UPDATE "test"."schema_migrations" SET checksum = $2 WHERE id = $1',

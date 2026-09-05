@@ -74,14 +74,8 @@ export {
   type PostgresAdminSessionStore,
 } from './admin/postgres-auth.js';
 export {
-  ICalCommitAvailabilityError,
   createICalSyncJob,
-  recheckAvailabilityBeforeApproval,
-  recheckAvailabilityBeforeCommit,
-  recheckAvailabilityBeforePayment,
-  type AvailabilityRecheckPort,
   type ICalClock,
-  type ICalStay,
   type ICalSyncConfig,
   type ICalSyncError,
   type ICalSyncHealth,

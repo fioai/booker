@@ -9,8 +9,9 @@ import {
 
 import { PersistenceError } from '../database/errors.js';
 import { lockProperty } from '../database/property-lock.js';
-import type { PostgresDatabasePort, PostgresTransactionPort } from '../database/postgres.js';
-import { qualifiedTable } from '../database/identifiers.js';
+import { requireProperty } from '../database/property-guards.js';
+import type { PostgresDatabasePort } from '../database/postgres.js';
+import { qualifiedTable, validateRecordIdentifier } from '../database/identifiers.js';
 
 export interface RateOrganizationScope {
   readonly organizationId: string;
@@ -35,30 +36,13 @@ interface SeasonalRateRow extends QueryResultRow {
   readonly nightly_rate_minor: unknown;
 }
 
-const IDENTIFIER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]*$/u;
-const MAX_IDENTIFIER_LENGTH = 64;
-
-function validateIdentifier(
-  value: unknown,
-  code: 'invalid_organization_id' | 'invalid_property_id',
-): asserts value is string {
-  if (
-    typeof value !== 'string' ||
-    value.length === 0 ||
-    value.length > MAX_IDENTIFIER_LENGTH ||
-    !IDENTIFIER_PATTERN.test(value)
-  ) {
-    throw new PersistenceError(code, `${code} must be a valid identifier.`);
-  }
-}
-
 function validateScope(scope: RateOrganizationScope): string {
-  validateIdentifier(scope?.organizationId, 'invalid_organization_id');
+  validateRecordIdentifier(scope?.organizationId, 'invalid_organization_id');
   return scope.organizationId;
 }
 
 function validatePropertyId(propertyId: string): string {
-  validateIdentifier(propertyId, 'invalid_property_id');
+  validateRecordIdentifier(propertyId, 'invalid_property_id');
   return propertyId;
 }
 
@@ -81,29 +65,6 @@ function parseDatabaseMinorAmount(value: unknown, field: string): number {
     throw new PersistenceError('database_corruption', `${field} is not a safe integer amount.`);
   }
   return parsed;
-}
-
-function requirePropertyQuery(
-  transaction: PostgresTransactionPort,
-  propertiesTable: string,
-  organizationId: string,
-  propertyId: string,
-): Promise<void> {
-  return transaction
-    .query<{
-      id: string;
-    }>(`SELECT id FROM ${propertiesTable} WHERE organization_id = $1 AND id = $2`, [
-      organizationId,
-      propertyId,
-    ])
-    .then((result) => {
-      if (result.rowCount === 0) {
-        throw new PersistenceError(
-          'property_not_found',
-          'property does not exist in this organization.',
-        );
-      }
-    });
 }
 
 function toRatePlan(planRow: RatePlanRow, overrideRows: readonly SeasonalRateRow[]): RatePlan {
@@ -146,7 +107,7 @@ export class PostgresRateRepository implements RateRepository {
 
     await this.database.withTransaction(async (transaction) => {
       await lockProperty(transaction, organizationId, id);
-      await requirePropertyQuery(transaction, this.propertiesTable, organizationId, id);
+      await requireProperty(transaction, this.propertiesTable, organizationId, id);
       await transaction.query(
         `
           INSERT INTO ${this.plansTable} (
@@ -210,7 +171,7 @@ export class PostgresRateRepository implements RateRepository {
     const id = validatePropertyId(propertyId);
     return this.database.withTransaction(async (transaction) => {
       await lockProperty(transaction, organizationId, id);
-      await requirePropertyQuery(transaction, this.propertiesTable, organizationId, id);
+      await requireProperty(transaction, this.propertiesTable, organizationId, id);
 
       const planResult = await transaction.query<RatePlanRow>(
         `

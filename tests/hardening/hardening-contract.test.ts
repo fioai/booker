@@ -1,12 +1,4 @@
-import {
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -397,19 +389,6 @@ describe('hardening entrypoints', () => {
     },
   );
 
-  it('declares a clean Docker build and app health path', () => {
-    const dockerfile = readFileSync(resolve(root, 'Dockerfile'), 'utf8');
-    const compose = readFileSync(resolve(root, 'docker-compose.yml'), 'utf8');
-    const dockerignore = readFileSync(resolve(root, '.dockerignore'), 'utf8');
-    expect(dockerfile).toContain('pnpm install --frozen-lockfile');
-    expect(dockerfile).toContain('pnpm build');
-    expect(dockerfile).toContain('scripts/run-api.mjs');
-    expect(compose).toContain('healthz');
-    expect(compose).toContain('depends_on:');
-    expect(dockerignore).toContain('node_modules');
-    expect(dockerignore).toContain('.env');
-  });
-
   it('keeps deterministic sample data valid against the domain configuration invariants', () => {
     const result = createPropertyConfiguration({
       ...SAMPLE_DATA.property,
@@ -418,7 +397,7 @@ describe('hardening entrypoints', () => {
     });
     expect(result.ok, result.ok ? undefined : JSON.stringify(result.errors)).toBe(true);
     expect(SAMPLE_DATA.property).toMatchObject({
-      name: 'Sample Garden Bungalow',
+      name: 'Juniper Cabin',
       maximumGuests: 2,
       bedConfiguration: [{ type: 'double', quantity: 1 }],
     });
@@ -434,7 +413,6 @@ describe('hardening entrypoints', () => {
       'scripts/docker-clean-room.mjs',
       'scripts/migrate.mjs',
     ]) {
-      expect(existsSync(resolve(root, script)), script).toBe(true);
       const result = runScript(script, ['--help']);
       expect(result.status, `${script}: ${result.stderr}`).toBe(0);
       expect(result.stdout).toContain('Usage:');

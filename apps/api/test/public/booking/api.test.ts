@@ -78,6 +78,7 @@ function requestRecord(): BookingRequestRecord {
 function dependencies() {
   const findPublicById = vi.fn<() => Promise<PropertyConfiguration | null>>(async () => property());
   const bookingRequests: PublicBookingRequestRepository = {
+    findByIdempotencyKey: vi.fn(async () => null),
     submit: vi.fn(async () => requestRecord()),
   };
   return {
@@ -199,6 +200,67 @@ describe('public booking API v1', () => {
     ]);
   });
 
+  it('replays the stored request before checking mutable property and rate state', async () => {
+    const deps = dependencies();
+    const replay = { ...requestRecord(), status: 'approved' as const };
+    const findReplay = vi.fn(async () => replay);
+    const submit = vi.fn(async () => {
+      throw new Error('submit must not run for a replay');
+    });
+    deps.bookingRequests = { findByIdempotencyKey: findReplay, submit };
+    deps.properties.findPublicById = vi.fn(async () => {
+      throw new Error('property lookup must not run for a replay');
+    });
+    deps.rates.quote = vi.fn(async () => {
+      throw new Error('rate lookup must not run for a replay');
+    });
+    const api = createPublicBookingApi(deps);
+
+    await expect(
+      api.requestToBook(scope, propertyId, requestInput, 'replay-key'),
+    ).resolves.toMatchObject({
+      id: replay.id,
+      status: 'approved',
+      quote: replay.quote,
+    });
+    expect(findReplay).toHaveBeenCalledWith(
+      scope,
+      propertyId,
+      {
+        arrival: requestInput.arrival,
+        departure: requestInput.departure,
+        guestCount: requestInput.guestCount,
+        guestName: requestInput.guestName,
+        guestEmail: requestInput.guestEmail,
+        message: requestInput.message,
+      },
+      'replay-key',
+    );
+    expect(deps.properties.findPublicById).not.toHaveBeenCalled();
+    expect(deps.rates.quote).not.toHaveBeenCalled();
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it('rechecks the stable replay after a submission race reports key reuse', async () => {
+    const deps = dependencies();
+    let lookupCount = 0;
+    const findReplay = vi.fn(async () => {
+      lookupCount += 1;
+      return lookupCount === 1 ? null : requestRecord();
+    });
+    const submit = vi.fn(async () => {
+      throw { code: 'idempotency_key_reuse' };
+    });
+    deps.bookingRequests = { findByIdempotencyKey: findReplay, submit };
+    const api = createPublicBookingApi(deps);
+
+    await expect(
+      api.requestToBook(scope, propertyId, requestInput, 'raced-key'),
+    ).resolves.toMatchObject({ id: 'request-001', status: 'pending' });
+    expect(findReplay).toHaveBeenCalledTimes(2);
+    expect(submit).toHaveBeenCalledTimes(1);
+  });
+
   it('maps persistence conflicts and property capacity failures to stable public errors', async () => {
     const deps = dependencies();
     deps.bookingRequests.submit = vi.fn(async () => {
@@ -247,7 +309,10 @@ describe('public booking API v1', () => {
   it('uses the atomic submission boundary and forwards an idempotency key without exposing it', async () => {
     const deps = dependencies();
     const submit = vi.fn(async () => requestRecord());
-    deps.bookingRequests = { submit };
+    deps.bookingRequests = {
+      findByIdempotencyKey: vi.fn(async () => null),
+      submit,
+    };
     const api = createPublicBookingApi(deps);
 
     await expect(
@@ -270,7 +335,8 @@ describe('public booking API v1', () => {
   it('fails closed when only the legacy non-atomic create boundary is composed', async () => {
     const deps = dependencies();
     const submit = deps.bookingRequests.submit;
-    (deps.bookingRequests as unknown as { submit?: unknown }).submit = undefined;
+    (deps.bookingRequests as unknown as { findByIdempotencyKey?: unknown }).findByIdempotencyKey =
+      undefined;
     const api = createPublicBookingApi(deps);
 
     await expect(
@@ -286,6 +352,7 @@ describe('public booking API v1', () => {
   it('maps idempotency mismatch to the stable public conflict without leaking persistence details', async () => {
     const deps = dependencies();
     deps.bookingRequests = {
+      findByIdempotencyKey: vi.fn(async () => null),
       submit: vi.fn(async () => {
         throw { code: 'idempotency_key_reuse', message: 'private fingerprint detail' };
       }),
@@ -304,7 +371,10 @@ describe('public booking API v1', () => {
   it('reads idempotency headers case-insensitively on the in-process HTTP boundary', async () => {
     const deps = dependencies();
     const submit = vi.fn(async () => requestRecord());
-    deps.bookingRequests = { submit };
+    deps.bookingRequests = {
+      findByIdempotencyKey: vi.fn(async () => null),
+      submit,
+    };
     const http = createPublicBookingHttpApi(deps);
 
     await expect(
@@ -325,14 +395,23 @@ describe('public booking API v1', () => {
     const deps = dependencies();
     const http = createPublicBookingHttpApi(deps);
 
-    await expect(
-      http.handle(scope, { method: 'DELETE' as 'GET', path: `/v1/properties/${propertyId}` }),
-    ).resolves.toEqual({
-      status: 405,
-      body: {
-        error: { code: 'method_not_allowed', message: 'Method is not allowed for this route.' },
-      },
-    });
+    for (const [method, suffix] of [
+      ['POST', ''],
+      ['POST', '/availability'],
+      ['GET', '/quote'],
+      ['GET', '/request-to-book'],
+    ] as const) {
+      await expect(
+        http.handle(scope, { method, path: `/v1/properties/${propertyId}${suffix}` }),
+      ).resolves.toEqual({
+        status: 405,
+        body: {
+          error: { code: 'method_not_allowed', message: 'Method is not allowed for this route.' },
+        },
+      });
+    }
+    expect(deps.properties.findPublicById).not.toHaveBeenCalled();
+    expect(deps.bookingRequests.findByIdempotencyKey).not.toHaveBeenCalled();
     await expect(
       http.handle(scope, { method: 'GET', path: '/v1/not-a-public-route' }),
     ).resolves.toEqual({

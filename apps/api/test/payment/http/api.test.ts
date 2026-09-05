@@ -79,9 +79,19 @@ describe('payment HTTP boundary', () => {
       }),
     ).resolves.toEqual({ status: 200, body: { received: true } });
     expect(handleWebhook).toHaveBeenCalledWith(rawBody, 't=1,v1=test');
-    expect(
-      JSON.stringify(await api.handle({ method: 'GET', path: '/v1/payments/stripe/webhook' })),
-    ).not.toContain('providerEventId');
+    for (const path of [
+      '/v1/payments/stripe/webhook',
+      '/v1/properties/property-a/booking-requests/request-a/checkout',
+    ]) {
+      await expect(api.handle({ method: 'GET', path })).resolves.toEqual({
+        status: 405,
+        body: {
+          error: { code: 'method_not_allowed', message: 'Method is not allowed for this route.' },
+        },
+      });
+    }
+    expect(handleWebhook).toHaveBeenCalledTimes(1);
+    expect(service.startCheckout).not.toHaveBeenCalled();
   });
 
   it('maps invalid signatures and unconfigured payment flow to bounded errors', async () => {

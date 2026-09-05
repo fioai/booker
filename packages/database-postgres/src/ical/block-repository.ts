@@ -12,6 +12,7 @@ import type {
 
 import { PersistenceError, isPostgresError } from '../database/errors.js';
 import { lockProperty } from '../database/property-lock.js';
+import { requireProperty } from '../database/property-guards.js';
 import type { PostgresDatabasePort, PostgresTransactionPort } from '../database/postgres.js';
 import { qualifiedTable } from '../database/identifiers.js';
 
@@ -209,28 +210,6 @@ function mapRow(row: ICalBlockRow): ICalBlockRecord {
   });
 }
 
-function requireProperty(
-  transaction: PostgresTransactionPort,
-  propertiesTable: string,
-  scope: { readonly organizationId: string; readonly propertyId: string },
-): Promise<void> {
-  return transaction
-    .query<{
-      id: string;
-    }>(`SELECT id FROM ${propertiesTable} WHERE organization_id = $1 AND id = $2`, [
-      scope.organizationId,
-      scope.propertyId,
-    ])
-    .then((result) => {
-      if (result.rowCount === 0) {
-        throw new PersistenceError(
-          'property_not_found',
-          'property does not exist in this organization.',
-        );
-      }
-    });
-}
-
 async function requireNoAvailabilityConflict(
   transaction: PostgresTransactionPort,
   availabilityTable: string,
@@ -311,7 +290,12 @@ export class PostgresICalBlockStore implements ICalBlockStore {
       }
       return await this.database.withTransaction(async (transaction) => {
         await lockProperty(transaction, validatedScope.organizationId, validatedScope.propertyId);
-        await requireProperty(transaction, this.propertiesTable, validatedScope);
+        await requireProperty(
+          transaction,
+          this.propertiesTable,
+          validatedScope.organizationId,
+          validatedScope.propertyId,
+        );
         return this.upsertInTransaction(transaction, next);
       });
     } catch (error) {
@@ -473,7 +457,12 @@ export class PostgresICalBlockStore implements ICalBlockStore {
       }
       return await this.database.withTransaction(async (transaction) => {
         await lockProperty(transaction, validatedScope.organizationId, validatedScope.propertyId);
-        await requireProperty(transaction, this.propertiesTable, validatedScope);
+        await requireProperty(
+          transaction,
+          this.propertiesTable,
+          validatedScope.organizationId,
+          validatedScope.propertyId,
+        );
         return this.releaseInTransaction(
           transaction,
           validatedScope,
@@ -587,7 +576,12 @@ export class PostgresICalBlockStore implements ICalBlockStore {
       // Keeping one lock order protects the full read/decision/write interval without
       // introducing a second advisory-lock cycle that could deadlock with inventory writes.
       await lockProperty(transaction, validatedScope.organizationId, validatedScope.propertyId);
-      await requireProperty(transaction, this.propertiesTable, validatedScope);
+      await requireProperty(
+        transaction,
+        this.propertiesTable,
+        validatedScope.organizationId,
+        validatedScope.propertyId,
+      );
       return work(new PostgresICalBlockStore(this.database, transaction));
     });
   }

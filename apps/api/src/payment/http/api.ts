@@ -182,14 +182,14 @@ export function createPaymentHttpApi(
         );
       }
       try {
+        if (request.method !== 'POST') {
+          throw new PaymentHttpError(
+            405,
+            'method_not_allowed',
+            'Method is not allowed for this route.',
+          );
+        }
         if (parsedRoute.kind === 'checkout') {
-          if (request.method !== 'POST') {
-            throw new PaymentHttpError(
-              405,
-              'method_not_allowed',
-              'Method is not allowed for this route.',
-            );
-          }
           if (!emptyBody(request.body)) {
             throw new PaymentHttpError(
               400,
@@ -199,13 +199,6 @@ export function createPaymentHttpApi(
           }
           return checkoutResponse(
             await service.startCheckout(scope, parsedRoute.propertyId, parsedRoute.requestId),
-          );
-        }
-        if (request.method !== 'POST') {
-          throw new PaymentHttpError(
-            405,
-            'method_not_allowed',
-            'Method is not allowed for this route.',
           );
         }
         const signature = headerValue(request.headers, 'stripe-signature');

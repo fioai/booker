@@ -39,6 +39,7 @@ jobs:
       - run: pnpm check:sdk-package
       - run: pnpm check:env
       - run: pnpm scan:secrets
+      - run: corepack pnpm scan:history
       - run: pnpm audit:dependencies
       - name: Check committed whitespace on pull request
         if: github.event_name == 'pull_request'
@@ -93,22 +94,6 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm test:integration
-
-  sdk-consumer:
-    name: Packed SDK consumer
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-      - run: pnpm check:sdk-package
 
   docker:
     name: Docker reproducibility

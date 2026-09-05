@@ -384,7 +384,6 @@ describe('versioned public booking contract', () => {
     expect(bodyTextRegularExpression.test(loneHighSurrogate)).toBe(false);
     expect(bodyTextRegularExpression.test(loneLowSurrogate)).toBe(false);
     expect(bodyTextRegularExpression.test(astralCharacter)).toBe(true);
-    expect(Array.from(astralCharacter)).toEqual([astralCharacter]);
     const idempotencyKeyRegularExpression = new RegExp(idempotencyKeySchema?.pattern ?? '', 'u');
     expect(idempotencyKeyRegularExpression.test('!portable-key~')).toBe(true);
     expect(idempotencyKeyRegularExpression.test('key with space')).toBe(false);

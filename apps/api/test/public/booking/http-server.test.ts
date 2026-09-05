@@ -65,6 +65,7 @@ function requestRecordForHttp(): BookingRequestRecord {
 function dependencies() {
   const publicProperty = property();
   const bookingRequests: PublicBookingRequestRepository = {
+    findByIdempotencyKey: vi.fn(async () => null),
     submit: vi.fn(
       async (_scope, requestedPropertyId, input): Promise<BookingRequestRecord> => ({
         ...input,
@@ -202,7 +203,10 @@ describe('public booking v1 real HTTP server', () => {
   it('passes the idempotency key and pending-only mode to the request boundary', async () => {
     const deps = dependencies();
     const submit = vi.fn(async () => requestRecordForHttp());
-    deps.bookingRequests = { submit };
+    deps.bookingRequests = {
+      findByIdempotencyKey: vi.fn(async () => null),
+      submit,
+    };
     server = createApiHttpServer(deps, { scope });
     const address = await server.listen(0);
     baseUrl = `http://127.0.0.1:${address.port}`;

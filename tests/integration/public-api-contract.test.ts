@@ -163,6 +163,95 @@ describe('PostgreSQL-backed public booking REST contract', () => {
     expect(JSON.stringify(requestBody)).not.toContain('Ada Lovelace');
   });
 
+  it('replays the stored request after rate and capacity changes without creating another record', async () => {
+    const body = {
+      arrival: '2026-08-01',
+      departure: '2026-08-03',
+      guestCount: 2,
+      guestName: 'Ada Lovelace',
+      guestEmail: 'ada@example.test',
+      message: 'Please confirm availability.',
+    };
+    const firstResponse = await fetch(`${baseUrl}/v1/properties/${propertyId}/request-to-book`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'idempotency-key': 'mutable-replay-key' },
+      body: JSON.stringify(body),
+    });
+    expect(firstResponse.status).toBe(201);
+    const firstBody = await firstResponse.json();
+    if (
+      typeof firstBody !== 'object' ||
+      firstBody === null ||
+      !('id' in firstBody) ||
+      typeof firstBody.id !== 'string'
+    ) {
+      throw new Error('request response must include an id.');
+    }
+
+    const requests = createPostgresBookingRequestRepository(database as PostgresDatabasePort);
+    await requests.approve({ organizationId }, propertyId, firstBody.id);
+    await pool?.query(
+      `UPDATE ${table('properties')} SET maximum_guests = 1 WHERE organization_id = $1 AND id = $2`,
+      [organizationId, propertyId],
+    );
+    await pool?.query(
+      `DELETE FROM ${table('property_rate_plans')} WHERE organization_id = $1 AND property_id = $2`,
+      [organizationId, propertyId],
+    );
+
+    const replayResponse = await fetch(`${baseUrl}/v1/properties/${propertyId}/request-to-book`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'idempotency-key': 'mutable-replay-key' },
+      body: JSON.stringify(body),
+    });
+    expect(replayResponse.status).toBe(201);
+    expect(await replayResponse.json()).toEqual({ ...firstBody, status: 'approved' });
+
+    const changedBodyResponse = await fetch(
+      `${baseUrl}/v1/properties/${propertyId}/request-to-book`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'idempotency-key': 'mutable-replay-key' },
+        body: JSON.stringify({ ...body, message: 'A different request.' }),
+      },
+    );
+    expect(changedBodyResponse.status).toBe(409);
+    expect(await changedBodyResponse.json()).toMatchObject({
+      error: { code: 'request_conflict' },
+    });
+
+    const otherPropertyId = `other-property-${runId}`;
+    const properties = createPostgresPropertyRepository(database as PostgresDatabasePort);
+    await properties.create({ organizationId }, makeProperty(otherPropertyId, 'Other property.'));
+    const changedPropertyResponse = await fetch(
+      `${baseUrl}/v1/properties/${otherPropertyId}/request-to-book`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'idempotency-key': 'mutable-replay-key' },
+        body: JSON.stringify(body),
+      },
+    );
+    expect(changedPropertyResponse.status).toBe(409);
+    expect(await changedPropertyResponse.json()).toMatchObject({
+      error: { code: 'request_conflict' },
+    });
+
+    const persisted = await pool?.query<{ requests: string; events: string }>(
+      `
+        SELECT
+          (SELECT count(*)::text FROM ${table('booking_requests')}) AS requests,
+          (SELECT count(*)::text FROM ${table('booking_outbox')}) AS events
+        WHERE EXISTS (
+          SELECT 1
+          FROM ${table('booking_requests')}
+          WHERE organization_id = $1 AND idempotency_key = $2
+        )
+      `,
+      [organizationId, 'mutable-replay-key'],
+    );
+    expect(persisted?.rows).toEqual([{ requests: '1', events: '2' }]);
+  });
+
   it('persists exact Unicode text limits and rejects the next code point', async () => {
     const astralCodePoint = '😀';
     const exactInput = {

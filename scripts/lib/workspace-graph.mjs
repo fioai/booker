@@ -7,18 +7,15 @@ export const WORKSPACE_DEPENDENCY_GRAPH = Object.freeze({
     '@booking-engine/sdk-typescript',
   ]),
   '@booking-engine/booking-core': Object.freeze([]),
-  '@booking-engine/channel-calendar': Object.freeze([]),
-  '@booking-engine/channel-ical': Object.freeze(['@booking-engine/channel-calendar']),
+  '@booking-engine/channel-ical': Object.freeze([]),
   '@booking-engine/database-postgres': Object.freeze([
     '@booking-engine/booking-core',
     '@booking-engine/channel-ical',
     '@booking-engine/payments',
   ]),
-  '@booking-engine/notifications': Object.freeze([]),
   '@booking-engine/payments': Object.freeze([]),
   '@booking-engine/payments-stripe': Object.freeze(['@booking-engine/payments']),
   '@booking-engine/sdk-typescript': Object.freeze([]),
-  '@booking-engine/test-support': Object.freeze([]),
 });
 
 const RUNTIME_DEPENDENCY_FIELDS = Object.freeze([

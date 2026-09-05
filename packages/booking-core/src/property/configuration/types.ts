@@ -39,40 +39,15 @@ export interface BedConfiguration {
   readonly quantity: number;
 }
 
-export interface PropertyConfiguration {
+export interface PropertyConfiguration extends PropertyConfigurationState {
   readonly [propertyConfigurationBrand]: typeof propertyConfigurationBrand;
-  readonly id: string;
-  readonly name: string;
-  readonly summary: string;
-  readonly country: string;
-  readonly timezone: string;
-  readonly currency: string;
-  readonly propertyType: PropertyType;
-  readonly bedroomCount: number;
-  readonly bedConfiguration: readonly BedConfiguration[];
-  readonly bathroomCount: number;
-  readonly maximumGuests: number;
-  readonly amenities: readonly string[];
-  readonly hostNotes: string;
-  readonly operationalNotes: string;
 }
 
-export type PropertyConfigurationState = Readonly<{
-  id: string;
-  name: string;
-  summary: string;
-  country: string;
-  timezone: string;
-  currency: string;
-  propertyType: PropertyType;
-  bedroomCount: number;
-  bedConfiguration: readonly BedConfiguration[];
-  bathroomCount: number;
-  maximumGuests: number;
-  amenities: readonly string[];
-  hostNotes: string;
-  operationalNotes: string;
-}>;
+export interface PropertyConfigurationState
+  extends Omit<PropertyConfigurationInput, 'propertyType' | 'bedConfiguration'> {
+  readonly propertyType: PropertyType;
+  readonly bedConfiguration: readonly BedConfiguration[];
+}
 
 export type PropertyValidationErrorCode =
   | 'invalid_input'

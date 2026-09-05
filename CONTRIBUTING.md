@@ -18,10 +18,10 @@ part of an unrelated change.
 ## Package boundaries
 
 This repository is one modular monolith. `apps/api` is the composition and same-origin,
-server-rendered owner-admin surface. `@booking-engine/sdk-typescript` is the only public
-package in the first release. `booking-core`, `database-postgres`, `payments`,
-`payments-stripe`, `channel-calendar`, `channel-ical`, `notifications`, and `test-support`
-are private implementation or test packages.
+server-rendered owner-admin surface. `@booking-engine/sdk-typescript` is the only intended public
+package in the first release; version `0.1.0` is currently an unpublished release candidate.
+`booking-core`, `database-postgres`, `payments`, `payments-stripe`, and `channel-ical`
+are private implementation packages. Shared test helpers live with the tests.
 
 External consumers use the SDK and public HTTP contract. Application code must not import
 private admin, database, or domain internals on behalf of an external storefront. PostgreSQL
@@ -43,11 +43,17 @@ on port `5432`.
 
 The root [Development and release gates](README.md#development-and-release-gates) checklist is the
 single authoritative release command list. Run focused checks while changing a module, then run
-every command in that checklist before opening a pull request. This includes the explicitly
-confirmed backup/restore rehearsal and the Docker clean-room gate. Do not maintain a second,
-partial command list here.
+every command in that checklist before opening a pull request. The checklist includes the history
+secret scan, the explicitly confirmed backup/restore rehearsal, and the Docker clean-room gate.
+Do not maintain a second, partial command list here.
 
 Docker-backed checks require a running Docker engine. Do not replace them with mocked claims.
+
+## Public release documentation
+
+Read [`RELEASING.md`](RELEASING.md) for version and tag rules, release gates, and the complete SDK
+pack, provenance, and publication procedure. Read [`SUPPORT.md`](SUPPORT.md) for support scope and
+normal issue routes. Read [`SECURITY.md`](SECURITY.md) for private vulnerability reporting.
 
 ## Migrations
 
@@ -62,3 +68,7 @@ Keep public V1 routes, statuses, error codes/messages, date semantics, money uni
 idempotency behavior, tenant scoping, and privacy omissions stable unless a new ADR explicitly
 changes the contract. Add contract-level tests for new observable behavior. Keep generated
 `dist` output and local environment files out of commits.
+
+## Change history
+
+Record user-visible changes in [`CHANGELOG.md`](CHANGELOG.md) as part of the release change.

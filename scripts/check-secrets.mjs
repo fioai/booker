@@ -105,7 +105,10 @@ function workingSnapshot(root, file, tracked) {
   let metadata;
   try {
     metadata = lstatSync(path);
-  } catch {
+  } catch (error) {
+    if (tracked && error.code === 'ENOENT') {
+      return undefined;
+    }
     return {
       contents: undefined,
       candidate: { file, tracked, byteLength: 0 },
@@ -260,9 +263,9 @@ function createReport(aggregate) {
   const stdout =
     'Secret scan passed: inspected ' +
     aggregate.scannedSnapshots +
-    ' text snapshot(s); ignored ' +
+    ' snapshot(s); classified ' +
     aggregate.totalPlaceholders +
-    ' explicit placeholder(s); findings 0.\n' +
+    ' placeholder(s) or reviewed image(s); findings 0.\n' +
     'Secret scan totals: retained finding diagnostics 0; truncated finding diagnostics 0; ' +
     'retained placeholder diagnostics ' +
     aggregate.placeholders.length +
@@ -301,6 +304,15 @@ export function runSecretScan(root = defaultRoot) {
 
   for (const candidate of filesToScan(scanRoot, indexState.files)) {
     const working = workingSnapshot(scanRoot, candidate.file, candidate.tracked);
+    if (working === undefined) {
+      const index = indexSnapshot(
+        scanRoot,
+        candidate.file,
+        indexState.stageZeroObjectIds.get(candidate.file),
+      );
+      collectResult(aggregate, scanSecretCandidate(index.candidate), 'index');
+      continue;
+    }
     collectResult(aggregate, scanSecretCandidate(working.candidate), 'working tree');
 
     if (!candidate.tracked || !stagedFiles.has(candidate.file)) {

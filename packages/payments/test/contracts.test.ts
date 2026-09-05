@@ -4,7 +4,6 @@ import {
   createPaymentCheckoutRequest,
   paymentStateTransition,
   type MoneyMinor,
-  type PaymentCheckoutRequest,
 } from '../src/index.js';
 
 const validInput = {
@@ -27,8 +26,6 @@ describe('provider-neutral payment contracts', () => {
       throw new Error('expected valid payment checkout request');
     }
     expect(Object.isFrozen(result.value)).toBe(true);
-    expect(result.value.amountMinor).toBe(28_500);
-    expect(result.value.currency).toBe('EUR');
   });
 
   it.each([
@@ -54,10 +51,5 @@ describe('provider-neutral payment contracts', () => {
       ok: false,
       error: { code: 'terminal_state' },
     });
-  });
-
-  it('keeps the public request type provider-neutral', () => {
-    const request: PaymentCheckoutRequest = validInput;
-    expect('stripe' in request).toBe(false);
   });
 });

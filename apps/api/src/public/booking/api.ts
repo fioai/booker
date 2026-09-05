@@ -8,6 +8,7 @@ import type {
   PublicRequestToBookV1,
 } from '@booking-engine/sdk-typescript';
 import {
+  PUBLIC_BOOKING_CONTRACT_MANIFEST_V1,
   validatePublicRequestToBookV1,
   validatePublicStayV1,
 } from '@booking-engine/sdk-typescript';
@@ -59,6 +60,13 @@ function ensureProperty(
     });
 }
 
+function isIdempotencyKeyReuse(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null || !('code' in error)) {
+    return false;
+  }
+  return error.code === 'idempotency_key_reuse';
+}
+
 export function createPublicBookingApi(
   dependencies: PublicBookingApiDependencies,
 ): PublicBookingApi {
@@ -99,7 +107,10 @@ export function createPublicBookingApi(
       }
     },
     async requestToBook(scope, propertyId, input, idempotencyKey): Promise<PublicRequestToBookV1> {
-      if (typeof dependencies.bookingRequests.submit !== 'function') {
+      if (
+        typeof dependencies.bookingRequests.findByIdempotencyKey !== 'function' ||
+        typeof dependencies.bookingRequests.submit !== 'function'
+      ) {
         throw new PublicBookingApiError(
           500,
           'internal_error',
@@ -112,36 +123,90 @@ export function createPublicBookingApi(
         throwValidation(request);
       }
       const validatedIdempotencyKey = requireIdempotencyKey(idempotencyKey);
-      const property = await ensureProperty(dependencies, scope, id);
-      if (request.value.guestCount > property.maximumGuests) {
-        throw new PublicBookingApiError(400, 'validation_failed', 'Request validation failed.', [
-          {
-            field: 'guestCount',
-            code: 'invalid_value',
-            message: `guestCount must not exceed this property's maximum of ${property.maximumGuests}.`,
-          },
-        ]);
-      }
+      const clientInput = {
+        arrival: request.value.arrival,
+        departure: request.value.departure,
+        guestCount: request.value.guestCount,
+        guestName: request.value.guestName,
+        guestEmail: request.value.guestEmail,
+        message: request.value.message ?? null,
+      };
+      const findReplay = () =>
+        dependencies.bookingRequests.findByIdempotencyKey(
+          scope,
+          id,
+          clientInput,
+          validatedIdempotencyKey,
+        );
+
       try {
-        const quote = await dependencies.rates.quote(scope, id, {
-          arrival: request.value.arrival,
-          departure: request.value.departure,
-        });
-        const createInput: BookingRequestCreateInput = {
-          id: randomUUID(),
-          arrival: request.value.arrival,
-          departure: request.value.departure,
-          guestCount: request.value.guestCount,
-          guestName: request.value.guestName,
-          guestEmail: request.value.guestEmail,
-          message: request.value.message ?? null,
-          quote,
-        };
-        const saved = await dependencies.bookingRequests.submit(scope, id, createInput, {
-          idempotencyKey: validatedIdempotencyKey,
-          deferInventory: true,
-        });
-        return serializePublicBookingRequest(saved);
+        const replay = await findReplay();
+        if (replay !== null) {
+          return serializePublicBookingRequest(replay);
+        }
+
+        try {
+          const property = await ensureProperty(dependencies, scope, id);
+          if (request.value.guestCount > property.maximumGuests) {
+            throw new PublicBookingApiError(
+              400,
+              'validation_failed',
+              'Request validation failed.',
+              [
+                {
+                  field: 'guestCount',
+                  code: 'invalid_value',
+                  message: `guestCount must not exceed this property's maximum of ${property.maximumGuests}.`,
+                },
+              ],
+            );
+          }
+          const quote = await dependencies.rates.quote(scope, id, {
+            arrival: request.value.arrival,
+            departure: request.value.departure,
+          });
+          const createInput: BookingRequestCreateInput = {
+            id: randomUUID(),
+            arrival: request.value.arrival,
+            departure: request.value.departure,
+            guestCount: request.value.guestCount,
+            guestName: request.value.guestName,
+            guestEmail: request.value.guestEmail,
+            message: request.value.message ?? null,
+            quote,
+          };
+          try {
+            const saved = await dependencies.bookingRequests.submit(scope, id, createInput, {
+              idempotencyKey: validatedIdempotencyKey,
+              deferInventory: true,
+            });
+            return serializePublicBookingRequest(saved);
+          } catch (error) {
+            if (!isIdempotencyKeyReuse(error)) {
+              throw error;
+            }
+            const racedReplay = await findReplay();
+            if (racedReplay !== null) {
+              return serializePublicBookingRequest(racedReplay);
+            }
+            throw error;
+          }
+        } catch (error) {
+          if (isIdempotencyKeyReuse(error)) {
+            throw error;
+          }
+          try {
+            const racedReplay = await findReplay();
+            if (racedReplay !== null) {
+              return serializePublicBookingRequest(racedReplay);
+            }
+          } catch (lookupError) {
+            if (isIdempotencyKeyReuse(lookupError)) {
+              throw lookupError;
+            }
+          }
+          throw error;
+        }
       } catch (error) {
         if (error instanceof PublicBookingApiError) {
           throw error;
@@ -165,24 +230,19 @@ export function createPublicBookingHttpApi(
         );
       }
       try {
+        if (
+          request.method !== PUBLIC_BOOKING_CONTRACT_MANIFEST_V1.operations[route.resource].method
+        ) {
+          throw new PublicBookingApiError(
+            405,
+            'method_not_allowed',
+            'Method is not allowed for this route.',
+          );
+        }
         if (route.resource === 'property') {
-          if (request.method !== 'GET') {
-            throw new PublicBookingApiError(
-              405,
-              'method_not_allowed',
-              'Method is not allowed for this route.',
-            );
-          }
           return { status: 200, body: await api.getProperty(scope, route.propertyId) };
         }
         if (route.resource === 'availability') {
-          if (request.method !== 'GET') {
-            throw new PublicBookingApiError(
-              405,
-              'method_not_allowed',
-              'Method is not allowed for this route.',
-            );
-          }
           return {
             status: 200,
             body: await api.getAvailability(scope, route.propertyId, {
@@ -190,13 +250,6 @@ export function createPublicBookingHttpApi(
               departure: route.url.searchParams.get('departure') ?? undefined,
             }),
           };
-        }
-        if (request.method !== 'POST') {
-          throw new PublicBookingApiError(
-            405,
-            'method_not_allowed',
-            'Method is not allowed for this route.',
-          );
         }
         if (route.resource === 'quote') {
           return { status: 200, body: await api.getQuote(scope, route.propertyId, request.body) };

@@ -241,12 +241,12 @@ describe('workspace graph validation', () => {
 
   it('rejects a forbidden dependency', () => {
     const projects = validWorkspaceProjects();
-    findProject(projects, '@booking-engine/notifications').dependencies.push(
+    findProject(projects, '@booking-engine/booking-core').dependencies.push(
       '@booking-engine/payments',
     );
 
     expect(validateWorkspaceGraph(projects)).toEqual([
-      '@booking-engine/notifications declares forbidden workspace dependency @booking-engine/payments',
+      '@booking-engine/booking-core declares forbidden workspace dependency @booking-engine/payments',
     ]);
   });
 
@@ -288,27 +288,27 @@ describe('workspace graph validation', () => {
 
   it('rejects a forbidden optional workspace dependency from a manifest', () => {
     const projects = validWorkspaceProjects();
-    setRuntimeDependencies(projects, '@booking-engine/notifications', {
+    setRuntimeDependencies(projects, '@booking-engine/booking-core', {
       optionalDependencies: {
         '@booking-engine/payments': 'workspace:*',
       },
     });
 
     expect(validateWorkspaceGraph(projects)).toEqual([
-      '@booking-engine/notifications declares forbidden workspace dependency @booking-engine/payments',
+      '@booking-engine/booking-core declares forbidden workspace dependency @booking-engine/payments',
     ]);
   });
 
   it('rejects a forbidden peer workspace dependency from a manifest', () => {
     const projects = validWorkspaceProjects();
-    setRuntimeDependencies(projects, '@booking-engine/notifications', {
+    setRuntimeDependencies(projects, '@booking-engine/booking-core', {
       peerDependencies: {
         '@booking-engine/payments': 'workspace:*',
       },
     });
 
     expect(validateWorkspaceGraph(projects)).toEqual([
-      '@booking-engine/notifications declares forbidden workspace dependency @booking-engine/payments',
+      '@booking-engine/booking-core declares forbidden workspace dependency @booking-engine/payments',
     ]);
   });
 
@@ -331,7 +331,7 @@ describe('workspace graph validation', () => {
 
   it('ignores workspace packages that appear only in devDependencies', () => {
     const projects = validWorkspaceProjects();
-    setRuntimeDependencies(projects, '@booking-engine/notifications', {
+    setRuntimeDependencies(projects, '@booking-engine/booking-core', {
       devDependencies: {
         '@booking-engine/payments': 'workspace:*',
       },

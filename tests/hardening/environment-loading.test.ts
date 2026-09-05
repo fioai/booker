@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 
 import { DEPLOYMENT_IDENTITY_KEYS } from '../../scripts/lib/load-environment.mjs';
 import { libpqHostArgument } from '../../scripts/backup-restore-check.mjs';
+import { validateDatabaseUrl } from '../../scripts/lib/environment.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 const loadEnvironmentUrl = pathToFileURL(resolve(root, 'scripts/lib/load-environment.mjs')).href;
@@ -106,11 +107,27 @@ function runScript(
   });
 }
 
+const deploymentDatabasePassword = ['deployment', 'password'].join('-');
+
+function deploymentDatabaseUrl(
+  host = 'database.internal',
+  user = 'deploy-user',
+  password = deploymentDatabasePassword,
+  database = 'booking_engine',
+  query = '?sslmode=verify-full',
+): string {
+  return ['postgresql://', user, ':', password, '@', host, ':5432/', database, query].join('');
+}
+
 function explicitDeploymentEnvironment(): NodeJS.ProcessEnv {
   return {
     BOOKING_ENGINE_ENV: 'staging',
-    DATABASE_URL:
-      'postgresql://deploy-user:replace_me_local_password@database.internal/booking_engine_deploy',
+    DATABASE_URL: deploymentDatabaseUrl(
+      'database.internal',
+      'deploy-user',
+      deploymentDatabasePassword,
+      'booking_engine_deploy',
+    ),
     DATABASE_SCHEMA: 'deployment_schema',
     HOST: '0.0.0.0',
     PORT: '3000',
@@ -150,6 +167,98 @@ function writeRunnerObservationConfig(directory: string, marker: string): string
   );
   return config;
 }
+
+const validDeploymentDatabaseUrl = deploymentDatabaseUrl();
+
+describe('database URL deployment policy', () => {
+  it.each(['staging', 'production'])('accepts certificate-verified TLS for %s', (environment) => {
+    expect(validateDatabaseUrl(validDeploymentDatabaseUrl, environment)).toBe(
+      validDeploymentDatabaseUrl,
+    );
+  });
+
+  it.each([
+    ['staging', 'postgresql://deploy-user@database.internal/booking_engine?sslmode=verify-full'],
+    [
+      'production',
+      'postgresql://deploy-user:@database.internal/booking_engine?sslmode=verify-full',
+    ],
+  ])('rejects a missing password in %s', (environment, databaseUrl) => {
+    expect(() => validateDatabaseUrl(databaseUrl, environment)).toThrow(
+      'DATABASE_URL must include a non-empty password in staging or production.',
+    );
+  });
+
+  it.each([
+    ['staging', 'replace_me_user', 'real-password'],
+    ['production', 'deploy-user', 'local-only-placeholder'],
+  ])('rejects placeholder credentials in %s', (environment, user, password) => {
+    const databaseUrl = deploymentDatabaseUrl('database.internal', user, password);
+    expect(() => validateDatabaseUrl(databaseUrl, environment)).toThrow(
+      'DATABASE_URL must not contain placeholder credentials in staging or production.',
+    );
+  });
+
+  it.each([
+    ['staging', 'localhost'],
+    ['staging', '127.0.0.1'],
+    ['production', '[::1]'],
+  ])('rejects loopback host %s in %s', (environment, host) => {
+    const databaseUrl = deploymentDatabaseUrl(host);
+    expect(() => validateDatabaseUrl(databaseUrl, environment)).toThrow(
+      'DATABASE_URL must use a non-loopback host in staging or production.',
+    );
+  });
+
+  it.each([
+    ['', 'missing TLS mode'],
+    ['?sslmode=disable', 'disabled TLS'],
+    ['?sslmode=prefer', 'prefer TLS'],
+    ['?sslmode=require', 'require TLS'],
+    ['?sslmode=verify-ca', 'certificate-only TLS'],
+    ['?sslmode=no-verify', 'unverified TLS'],
+  ])('rejects %s for staging and production (%s)', (query) => {
+    for (const environment of ['staging', 'production']) {
+      const databaseUrl = deploymentDatabaseUrl(
+        'database.internal',
+        'deploy-user',
+        deploymentDatabasePassword,
+        'booking_engine',
+        query,
+      );
+      expect(() => validateDatabaseUrl(databaseUrl, environment)).toThrow(
+        'DATABASE_URL must use sslmode=verify-full for certificate-verified PostgreSQL TLS',
+      );
+    }
+  });
+
+  it.each([
+    '?sslmode=verify-full&sslmode=verify-full',
+    '?sslmode=verify-full&host=attacker.example',
+    '?host=attacker.example',
+    '?port=6432',
+    '?user=attacker',
+    '?password=attacker',
+    '?%68%6f%73%74=attacker.example',
+  ])('rejects endpoint or duplicate query override %s in every environment', (query) => {
+    for (const environment of ['local', 'test', 'staging', 'production']) {
+      const databaseUrl = deploymentDatabaseUrl(
+        'database.internal',
+        'deploy-user',
+        deploymentDatabasePassword,
+        'booking_engine',
+        query,
+      );
+      expect(() => validateDatabaseUrl(databaseUrl, environment)).toThrow();
+    }
+  });
+
+  it.each(['local', 'test'])('keeps the %s no-TLS workflow valid', (environment) => {
+    const databaseUrl =
+      'postgresql://local-user:local-only-placeholder@127.0.0.1:15432/booking_engine_local';
+    expect(validateDatabaseUrl(databaseUrl, environment)).toBe(databaseUrl);
+  });
+});
 
 describe('atomic environment loading', () => {
   it('continues without configuration when the optional file and identity variables are absent', () => {
@@ -283,7 +392,27 @@ describe('atomic environment loading', () => {
     expect(result.status).not.toBe(0);
     expect(result.stdout).toBe('');
     expect(result.stderr).toBe(
-      'Backup/restore failed: backup/restore DATABASE_URL must not contain query parameters.\n',
+      'Backup/restore failed: DATABASE_URL query parameters must be limited to sslmode=verify-full.\n',
+    );
+  });
+
+  it('accepts the shared verified-TLS URL form before checking the database confirmation', () => {
+    const result = runScript(
+      'scripts/backup-restore-check.mjs',
+      ['--confirm-database', 'wrong_database_name'],
+      {
+        BOOKING_ENGINE_ENV: 'test',
+        DATABASE_URL:
+          'postgresql://backup-user:local-only-placeholder@127.0.0.1:15432/booking_engine_test?sslmode=verify-full',
+        DATABASE_SCHEMA: 'public',
+        BOOKING_ENGINE_SAMPLE_DATA: 'false',
+      },
+    );
+
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toBe(
+      'Backup/restore failed: backup/restore requires --confirm-database with the exact decoded DATABASE_URL database name.\n',
     );
   });
 

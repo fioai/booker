@@ -92,12 +92,7 @@ async function main() {
     help();
     return;
   }
-  const [postgresPort, apiPort, smtpPort, mailpitPort] = await Promise.all([
-    freePort(),
-    freePort(),
-    freePort(),
-    freePort(),
-  ]);
+  const [postgresPort, apiPort] = await Promise.all([freePort(), freePort()]);
   const project = 'booking-engine-hardening-' + process.pid + '-' + Date.now().toString(36);
   const env = {
     ...process.env,
@@ -107,8 +102,6 @@ async function main() {
     POSTGRES_PASSWORD: CLEAN_ROOM_POSTGRES_PASSWORD,
     POSTGRES_PORT: String(postgresPort),
     API_PORT: String(apiPort),
-    MAILPIT_SMTP_PORT: String(smtpPort),
-    MAILPIT_UI_PORT: String(mailpitPort),
   };
   let started = false;
   try {

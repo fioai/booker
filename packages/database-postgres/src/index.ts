@@ -48,12 +48,13 @@ export {
 export {
   createPostgresBookingRequestRepository,
   PostgresBookingRequestRepository,
-  type BookingRequestRepositoryOptions,
+  type BookingRequestClientInput,
   type BookingRequestCreateInput,
   type BookingRequestOrganizationScope,
   type BookingRequestRecord,
   type BookingRequestRecheckResult,
   type BookingRequestRepository,
+  type BookingRequestRepositoryOptions,
   type BookingRequestSubmitOptions,
 } from './booking/request-repository.js';
 export {

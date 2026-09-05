@@ -5,8 +5,13 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/fioai/booking-engine.git"
+    "url": "https://github.com/fioai/booking-engine.git",
+    "directory": "packages/sdk-typescript"
   },
+  "bugs": {
+    "url": "https://github.com/fioai/booking-engine/issues"
+  },
+  "homepage": "https://github.com/fioai/booking-engine/tree/main/packages/sdk-typescript",
   "type": "module",
   "exports": {
     ".": {

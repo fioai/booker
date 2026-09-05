@@ -4,8 +4,9 @@ import { createLocalDateInterval, type LocalDateInterval } from '@booking-engine
 
 import { PersistenceError, isPostgresError } from '../database/errors.js';
 import { lockProperty } from '../database/property-lock.js';
-import type { PostgresDatabasePort, PostgresTransactionPort } from '../database/postgres.js';
-import { qualifiedTable } from '../database/identifiers.js';
+import { requireProperty, requireNoICalConflict } from '../database/property-guards.js';
+import type { PostgresDatabasePort } from '../database/postgres.js';
+import { qualifiedTable, validateRecordIdentifier } from '../database/identifiers.js';
 
 export interface AvailabilityOrganizationScope {
   readonly organizationId: string;
@@ -104,36 +105,20 @@ interface AvailabilityRow extends QueryResultRow {
   readonly reason: unknown;
 }
 
-const IDENTIFIER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]*$/u;
-const MAX_IDENTIFIER_LENGTH = 64;
 const MAX_REASON_LENGTH = 500;
 
-function validateIdentifier(
-  value: unknown,
-  code: 'invalid_organization_id' | 'invalid_property_id' | 'invalid_availability_id',
-): asserts value is string {
-  if (
-    typeof value !== 'string' ||
-    value.length === 0 ||
-    value.length > MAX_IDENTIFIER_LENGTH ||
-    !IDENTIFIER_PATTERN.test(value)
-  ) {
-    throw new PersistenceError(code, `${code} must be a valid identifier.`);
-  }
-}
-
 function validateScope(scope: AvailabilityOrganizationScope): string {
-  validateIdentifier(scope?.organizationId, 'invalid_organization_id');
+  validateRecordIdentifier(scope?.organizationId, 'invalid_organization_id');
   return scope.organizationId;
 }
 
 function validatePropertyId(propertyId: string): string {
-  validateIdentifier(propertyId, 'invalid_property_id');
+  validateRecordIdentifier(propertyId, 'invalid_property_id');
   return propertyId;
 }
 
 function validateRecordId(recordId: string): string {
-  validateIdentifier(recordId, 'invalid_availability_id');
+  validateRecordIdentifier(recordId, 'invalid_availability_id');
   return recordId;
 }
 
@@ -249,54 +234,6 @@ function parseConfirmedOccupancy(
   });
 }
 
-function requirePropertyQuery(
-  transaction: PostgresTransactionPort,
-  propertiesTable: string,
-  organizationId: string,
-  propertyId: string,
-): Promise<void> {
-  return transaction
-    .query<{
-      id: string;
-    }>(`SELECT id FROM ${propertiesTable} WHERE organization_id = $1 AND id = $2`, [
-      organizationId,
-      propertyId,
-    ])
-    .then((result) => {
-      if (result.rowCount === 0) {
-        throw new PersistenceError(
-          'property_not_found',
-          'property does not exist in this organization.',
-        );
-      }
-    });
-}
-
-async function requireNoICalConflict(
-  transaction: PostgresTransactionPort,
-  icalBlocksTable: string,
-  organizationId: string,
-  propertyId: string,
-  arrival: string,
-  departure: string,
-): Promise<void> {
-  const result = await transaction.query(
-    `
-      SELECT 1
-      FROM ${icalBlocksTable}
-      WHERE organization_id = $1
-        AND property_id = $2
-        AND status = 'active'
-        AND daterange(arrival, departure, '[)') && daterange($3::date, $4::date, '[)')
-      LIMIT 1
-    `,
-    [organizationId, propertyId, arrival, departure],
-  );
-  if (result.rowCount !== 0) {
-    throw new PersistenceError('availability_conflict', 'stay overlaps an active iCalendar block.');
-  }
-}
-
 function mapRecord(row: AvailabilityRow): AvailabilityRecord {
   if (
     typeof row.record_id !== 'string' ||
@@ -369,7 +306,7 @@ export class PostgresAvailabilityRepository implements AvailabilityRepository {
     try {
       return await this.database.withTransaction(async (transaction) => {
         await lockProperty(transaction, organizationId, property);
-        await requirePropertyQuery(transaction, this.propertiesTable, organizationId, property);
+        await requireProperty(transaction, this.propertiesTable, organizationId, property);
         await requireNoICalConflict(
           transaction,
           this.icalBlocksTable,
@@ -462,7 +399,7 @@ export class PostgresAvailabilityRepository implements AvailabilityRepository {
     const organizationId = validateScope(scope);
     const property = validatePropertyId(propertyId);
     await this.database.withTransaction((transaction) =>
-      requirePropertyQuery(transaction, this.propertiesTable, organizationId, property),
+      requireProperty(transaction, this.propertiesTable, organizationId, property),
     );
     const result = await this.database.query<AvailabilityRow>(
       `
@@ -589,7 +526,7 @@ export class PostgresAvailabilityRepository implements AvailabilityRepository {
     const property = validatePropertyId(propertyId);
     const interval = parseInterval(input);
     await this.database.withTransaction((transaction) =>
-      requirePropertyQuery(transaction, this.propertiesTable, organizationId, property),
+      requireProperty(transaction, this.propertiesTable, organizationId, property),
     );
     const result = await this.database.query(
       `
@@ -625,7 +562,7 @@ export class PostgresAvailabilityRepository implements AvailabilityRepository {
     return withDeadlockRetry(() =>
       this.database.withTransaction(async (transaction) => {
         await lockProperty(transaction, organizationId, property);
-        await requirePropertyQuery(transaction, this.propertiesTable, organizationId, property);
+        await requireProperty(transaction, this.propertiesTable, organizationId, property);
         const result = await transaction.query(
           `
             UPDATE ${this.blocksTable}
@@ -654,7 +591,7 @@ export class PostgresAvailabilityRepository implements AvailabilityRepository {
     try {
       return await this.database.withTransaction(async (transaction) => {
         await lockProperty(transaction, organizationId, property);
-        await requirePropertyQuery(transaction, this.propertiesTable, organizationId, property);
+        await requireProperty(transaction, this.propertiesTable, organizationId, property);
         const existing = await transaction.query<{
           arrival: string;
           departure: string;

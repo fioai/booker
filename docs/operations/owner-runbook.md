@@ -32,6 +32,10 @@ A production deployment must provide a deployment-owned complete pending-work qu
 The latest-100 list in the guide must not be its sole source of pending work. This repository does
 not ship a complete human request-management client.
 
+The [Juniper Cabin example](../../examples/cabin/README.md) includes a local reference inbox for
+trying the request and decision flow. It has the same latest-100 limitation and no external
+calendar freshness controls; it does not replace the production queue or this operating procedure.
+
 Use the deployment-owned queue or monitor to select pending work, and recheck availability
 immediately before each decision. If the deployment activates external calendars, complete a
 current successful refresh or another authoritative availability check before approval. A stale
@@ -96,13 +100,13 @@ Do not paste guest names, emails, messages, cookies, password hashes, database U
 URLs, or webhook signatures into tickets or chat. If a public response contains PII, stop traffic
 and preserve only a redacted status/request ID for investigation.
 
-The local `pnpm scan:secrets` command scans three local sources: tracked worktree files,
+The local `corepack pnpm scan:secrets` command scans three local sources: tracked worktree files,
 non-ignored untracked files, and staged index snapshots. It does not scan ignored files. Before a
 public release and after any suspected credential leak, use a separate access-controlled process
-to inspect ignored `.env` files, database dumps, archives, and backup directories. Also use
-repository-host and Git-history secret scanning. Revoke or rotate every exposed credential. Purge
-or rewrite history where required; a history rewrite does not replace credential revocation or
-rotation.
+to inspect ignored `.env` files, database dumps, archives, and backup directories. Also run
+`corepack pnpm scan:history` and repository-host secret scanning. Revoke or rotate every exposed
+credential. Purge or rewrite history where required; a history rewrite does not replace credential
+revocation or rotation.
 
 ## Incident actions
 
@@ -122,9 +126,9 @@ rotation.
 - **Unexpected payment webhook:** This runtime has no live payment provider. Do not change payment
   or occupancy data. Preserve redacted request metadata and use the deployment incident process.
 - **Credential exposure:** Revoke every exposed membership or session and rotate every exposed
-  external credential. Run repository-host and Git-history secret scanning, then purge or rewrite
-  history where required. The local worktree/index scan is not history evidence. Do not delete
-  guest data as a first response.
+  external credential. Run `corepack pnpm scan:history` and repository-host secret scanning, then
+  purge or rewrite history where required. The local worktree/index scan is not history evidence.
+  Do not delete guest data as a first response.
 
 ## Maintenance
 

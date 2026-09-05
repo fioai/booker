@@ -101,6 +101,13 @@ reverse proxy, provision owners outside the sample seed, and apply deployment ra
 controls. Do not expose the Node listener directly to the Internet or use Compose placeholders for
 real traffic.
 
+For staging and production, `DATABASE_URL` must contain a real non-empty password and a
+non-loopback PostgreSQL host. Its query string must contain exactly
+`sslmode=verify-full`; reject missing, repeated, unknown, or weaker parameters.
+This is the single approved deployment URL form. Runtime startup and backup validation use the
+same query allowlist; local and test URLs may omit TLS for Compose and isolated tests. The local
+Compose database intentionally does not use TLS.
+
 ## Non-destructive deployment-smoke contract
 
 This gate is deployment-owned. Run it with a deployment-owned authorized client. In staging, use

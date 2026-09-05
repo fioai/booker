@@ -41,7 +41,3 @@ Docker Hub registry metadata identifies that digest as the index for Linux `amd6
 `arm/v7`, `arm64/v8`, and `s390x` images. Docker selects the matching platform manifest from
 the pinned index. This replaces the earlier local repair that pinned only the `amd64` manifest
 and preserves the same Node tag.
-
-The malformed source digest was repaired only in this repository. No remote,
-push, deployment, credential change, or production-provider change was performed during the
-historical extraction.

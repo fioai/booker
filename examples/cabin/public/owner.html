@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Owner inbox · Juniper Cabin</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script type="module" src="/owner.js"></script>
+  </head>
+  <body>
+    <div class="demo-bar">Local demo · Fictional guests only · No payments or emails</div>
+    <header class="site-header wrap">
+      <a class="brand" href="/">Juniper Cabin</a>
+      <nav aria-label="Main"><a href="/">View the cabin</a></nav>
+    </header>
+    <main class="wrap owner-main">
+      <section
+        id="login-panel"
+        class="booking-panel login-panel"
+        aria-labelledby="login-title"
+        hidden
+      >
+        <h1 id="login-title">Owner sign-in</h1>
+        <p>Sign in to review booking requests.</p>
+        <form id="login-form">
+          <label
+            >Email<input
+              name="email"
+              type="email"
+              autocomplete="username"
+              maxlength="254"
+              required /></label
+          ><label
+            >Password<input
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              maxlength="256"
+              required /></label
+          ><button id="sign-in" type="submit">Sign in</button>
+        </form>
+        <button type="button" class="text-button" id="sample-owner">Use local demo login</button>
+        <p class="small muted">
+          Uses the public sample credentials from the local quickstart. This inbox is for your own
+          disposable demo database.
+        </p>
+      </section>
+      <section id="inbox" aria-labelledby="inbox-title" hidden>
+        <div class="owner-heading">
+          <div>
+            <h1 id="inbox-title">Booking requests</h1>
+          </div>
+          <div class="owner-actions">
+            <button id="refresh-inbox" class="secondary" type="button">Refresh inbox</button
+            ><button id="sign-out" class="text-button" type="button">Sign out</button>
+          </div>
+        </div>
+        <p class="small muted">
+          Latest 100 requests across all statuses; older pending requests may be omitted. External
+          calendars are not connected in this demo.
+        </p>
+        <div id="request-list" class="request-list"></div>
+        <div id="empty-inbox" class="empty-state" hidden>
+          <h2>No requests yet</h2>
+          <p>Send one from the cabin page, then refresh this inbox.</p>
+          <a href="/">Open the cabin page</a>
+        </div>
+      </section>
+      <p id="owner-message" class="feedback" role="status">Checking your session…</p>
+    </main>
+    <template id="request-template">
+      <article class="request-card">
+        <div>
+          <span class="status"></span>
+          <h2 class="guest-name"></h2>
+          <p class="stay"></p>
+          <p class="guest-email small muted"></p>
+          <p class="guest-note small"></p>
+          <p class="reference small muted"></p>
+        </div>
+        <div class="decision-controls">
+          <strong class="request-total"></strong
+          ><button type="button" class="approve">Check & approve</button
+          ><button type="button" class="reject secondary">Decline request</button>
+        </div>
+        <p class="feedback" role="status"></p>
+      </article>
+    </template>
+    <footer class="wrap site-footer">
+      <span>A reference owner client for the local demo.</span
+      ><a href="https://github.com/fioai/booking-engine">Booking Engine source ↗</a>
+    </footer>
+  </body>
+</html>

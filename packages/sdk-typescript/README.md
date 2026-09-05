@@ -2,7 +2,12 @@
 
 Dependency-free TypeScript client for the Booking Engine V1 public HTTP contract.
 
-## Install
+> **Release status:** Version `0.1.0` is an unpublished release candidate. It is not available from
+> a registry until the `v0.1.0` tag is created and the package is published with provenance. The
+> Booking Engine runtime is pre-release and is not recommended for production traffic. See the
+> root [`RELEASING.md`](../../RELEASING.md) for the complete SDK release procedure.
+
+## Install after publication
 
 ```sh
 pnpm add @booking-engine/sdk-typescript
@@ -62,7 +67,7 @@ client-side input failures are `PublicContractValidationErrorV1`.
 
 ## Public/private boundary
 
-This SDK is the only public package in the first `0.1.x` release line. The repository's domain,
-PostgreSQL, payment, calendar, notification, and admin packages remain private implementation
-boundaries. External storefronts should use the versioned HTTP contract through this package and
-must not import server or database internals.
+This SDK is the only intended public package in the first `0.1.x` release line. The repository's
+domain, PostgreSQL, payment, calendar, notification, and admin packages remain private
+implementation boundaries. External storefronts should use the versioned HTTP contract through
+this package and must not import server or database internals.

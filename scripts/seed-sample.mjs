@@ -14,12 +14,13 @@ export const SAMPLE_DATA = Object.freeze({
   }),
   property: Object.freeze({
     id: 'sample-bungalow',
-    name: 'Sample Garden Bungalow',
-    summary: 'A one-bedroom bungalow with a private garden for short stays.',
+    name: 'Juniper Cabin',
+    summary:
+      'A private one-bedroom cabin for two, with a double bed, one bathroom and a garden. Fibre Wi-Fi, air conditioning and a Smart TV are provided. Free street parking is available.',
     country: 'CA',
     timezone: 'America/Toronto',
     currency: 'CAD',
-    propertyType: 'bungalow',
+    propertyType: 'cabin',
     bedroomCount: 1,
     bedConfiguration: Object.freeze([{ type: 'double', quantity: 1 }]),
     bathroomCount: 1,
@@ -31,7 +32,7 @@ export const SAMPLE_DATA = Object.freeze({
       'Smart TV',
       'free street parking',
     ]),
-    hostNotes: 'A quiet sample property for local verification.',
+    hostNotes: 'Two guests, two nights minimum. Your stay is confirmed after owner approval.',
     operationalNotes: 'PRIVATE SAMPLE MARKER: confirm the guest key is returned on checkout.',
   }),
   rate: Object.freeze({

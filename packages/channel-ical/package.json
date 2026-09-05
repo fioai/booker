@@ -11,8 +11,5 @@
   },
   "files": [
     "dist"
-  ],
-  "dependencies": {
-    "@booking-engine/channel-calendar": "workspace:*"
-  }
+  ]
 }

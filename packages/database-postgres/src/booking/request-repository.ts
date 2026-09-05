@@ -14,6 +14,7 @@ import {
 
 import { PersistenceError, isPostgresError } from '../database/errors.js';
 import { lockProperty } from '../database/property-lock.js';
+import { requireProperty, requireNoICalConflict } from '../database/property-guards.js';
 import type { PostgresDatabasePort, PostgresTransactionPort } from '../database/postgres.js';
 import { qualifiedTable } from '../database/identifiers.js';
 
@@ -31,6 +32,12 @@ export interface BookingRequestCreateInput {
   readonly message: string | null;
   readonly quote: QuoteBreakdown;
 }
+
+/** Client fields identify a retry without including the immutable server quote. */
+export type BookingRequestClientInput = Pick<
+  BookingRequestCreateInput,
+  'arrival' | 'departure' | 'guestCount' | 'guestName' | 'guestEmail' | 'message'
+>;
 
 export interface BookingRequestSubmitOptions {
   readonly idempotencyKey: string;
@@ -62,6 +69,12 @@ export interface BookingRequestRecheckResult {
 }
 
 export interface BookingRequestRepository {
+  findByIdempotencyKey(
+    scope: BookingRequestOrganizationScope,
+    propertyId: string,
+    input: BookingRequestClientInput,
+    idempotencyKey: string,
+  ): Promise<BookingRequestRecord | null>;
   submit(
     scope: BookingRequestOrganizationScope,
     propertyId: string,
@@ -221,16 +234,13 @@ function parseTimestamp(value: unknown, field: string): Date {
   return date;
 }
 
-function validateInput(input: BookingRequestCreateInput): BookingRequestCreateInput & {
-  readonly quote: QuoteBreakdown;
-} {
+function validateClientInput(input: BookingRequestClientInput): BookingRequestClientInput {
   if (typeof input !== 'object' || input === null || Array.isArray(input)) {
     throw new PersistenceError(
       'booking_request_validation',
       'booking request input must be an object.',
     );
   }
-  validateRequestId(input?.id);
   const interval = createLocalDateInterval({
     arrival: input?.arrival,
     departure: input?.departure,
@@ -283,6 +293,27 @@ function validateInput(input: BookingRequestCreateInput): BookingRequestCreateIn
       'message is outside the public request bound.',
     );
   }
+  return Object.freeze({
+    arrival: interval.value.arrival,
+    departure: interval.value.departure,
+    guestCount: input.guestCount,
+    guestName: input.guestName.trim(),
+    guestEmail: input.guestEmail.trim(),
+    message: input.message === null ? null : input.message.trim(),
+  });
+}
+
+function validateInput(input: BookingRequestCreateInput): BookingRequestCreateInput & {
+  readonly quote: QuoteBreakdown;
+} {
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+    throw new PersistenceError(
+      'booking_request_validation',
+      'booking request input must be an object.',
+    );
+  }
+  validateRequestId(input?.id);
+  const client = validateClientInput(input);
   const snapshot = createQuoteSnapshot(input.quote);
   if (!snapshot.ok) {
     throw new PersistenceError(
@@ -291,10 +322,7 @@ function validateInput(input: BookingRequestCreateInput): BookingRequestCreateIn
       snapshot.errors as readonly QuoteSnapshotValidationError[],
     );
   }
-  if (
-    snapshot.value.arrival !== interval.value.arrival ||
-    snapshot.value.departure !== interval.value.departure
-  ) {
+  if (snapshot.value.arrival !== client.arrival || snapshot.value.departure !== client.departure) {
     throw new PersistenceError(
       'booking_request_validation',
       'server quote snapshot does not match the requested stay.',
@@ -302,11 +330,7 @@ function validateInput(input: BookingRequestCreateInput): BookingRequestCreateIn
   }
   return Object.freeze({
     ...input,
-    arrival: interval.value.arrival,
-    departure: interval.value.departure,
-    guestName: input.guestName.trim(),
-    guestEmail: input.guestEmail.trim(),
-    message: input.message === null ? null : input.message.trim(),
+    ...client,
     quote: snapshot.value,
   });
 }
@@ -328,32 +352,10 @@ function fingerprint(propertyId: string, input: BookingRequestCreateInput): stri
     .digest('hex');
 }
 
-function requireProperty(
-  transaction: PostgresTransactionPort,
-  propertiesTable: string,
-  organizationId: string,
-  propertyId: string,
-): Promise<void> {
-  return transaction
-    .query<{
-      id: string;
-    }>(`SELECT id FROM ${propertiesTable} WHERE organization_id = $1 AND id = $2`, [
-      organizationId,
-      propertyId,
-    ])
-    .then((result) => {
-      if (result.rowCount === 0) {
-        throw new PersistenceError(
-          'property_not_found',
-          'property does not exist in this organization.',
-        );
-      }
-    });
-}
-function matchesNormalizedRequest(
+function matchesNormalizedClientRequest(
   record: BookingRequestRecord,
   propertyId: string,
-  request: BookingRequestCreateInput,
+  request: BookingRequestClientInput,
 ): boolean {
   return (
     record.propertyId === propertyId &&
@@ -363,34 +365,19 @@ function matchesNormalizedRequest(
     record.guestName.trim() === request.guestName.trim() &&
     record.guestEmail.trim() === request.guestEmail.trim() &&
     (record.message === null ? null : record.message.trim()) ===
-      (request.message === null ? null : request.message.trim()) &&
-    JSON.stringify(record.quote) === JSON.stringify(request.quote)
+      (request.message === null ? null : request.message.trim())
   );
 }
 
-async function requireNoICalConflict(
-  transaction: PostgresTransactionPort,
-  icalBlocksTable: string,
-  organizationId: string,
+function matchesNormalizedRequest(
+  record: BookingRequestRecord,
   propertyId: string,
-  arrival: string,
-  departure: string,
-): Promise<void> {
-  const result = await transaction.query(
-    `
-      SELECT 1
-      FROM ${icalBlocksTable}
-      WHERE organization_id = $1
-        AND property_id = $2
-        AND status = 'active'
-        AND daterange(arrival, departure, '[)') && daterange($3::date, $4::date, '[)')
-      LIMIT 1
-    `,
-    [organizationId, propertyId, arrival, departure],
+  request: BookingRequestCreateInput,
+): boolean {
+  return (
+    matchesNormalizedClientRequest(record, propertyId, request) &&
+    JSON.stringify(record.quote) === JSON.stringify(request.quote)
   );
-  if (result.rowCount !== 0) {
-    throw new PersistenceError('availability_conflict', 'stay overlaps an active iCalendar block.');
-  }
 }
 
 async function requireNoAvailabilityConflict(
@@ -602,6 +589,39 @@ export class PostgresBookingRequestRepository implements BookingRequestRepositor
     ) {
       throw new RangeError('booking request hold duration is outside the bounded range.');
     }
+  }
+
+  async findByIdempotencyKey(
+    scope: BookingRequestOrganizationScope,
+    propertyId: string,
+    input: BookingRequestClientInput,
+    idempotencyKey: string,
+  ): Promise<BookingRequestRecord | null> {
+    const organizationId = validateScope(scope);
+    const property = validatePropertyId(propertyId);
+    const request = validateClientInput(input);
+    const key = validateIdempotencyKey(idempotencyKey);
+    // Replay lookup must run before mutable property and quote validation.
+    const result = await this.database.query<BookingRequestRow>(
+      `
+        SELECT ${REQUEST_COLUMNS}
+        FROM ${this.requestsTable}
+        WHERE organization_id = $1 AND idempotency_key = $2
+      `,
+      [organizationId, key],
+    );
+    const row = result.rows[0];
+    if (row === undefined) {
+      return null;
+    }
+    const record = mapRow(row);
+    if (!matchesNormalizedClientRequest(record, property, request)) {
+      throw new PersistenceError(
+        'idempotency_key_reuse',
+        'idempotency key was already used with a different request.',
+      );
+    }
+    return record;
   }
 
   async submit(
@@ -869,8 +889,16 @@ export class PostgresBookingRequestRepository implements BookingRequestRepositor
       if (this.isExpired(record, at)) {
         return { request: await this.expireLoaded(transaction, record, at), available: false };
       }
-      if (record.holdRecordId === undefined) {
-        try {
+      const hold =
+        record.holdRecordId === undefined
+          ? undefined
+          : await this.loadActiveHold(transaction, organizationId, property, record, at);
+      if (hold === null) {
+        return { request: await this.expireLoaded(transaction, record, at), available: false };
+      }
+      const stay = hold ?? record;
+      try {
+        if (hold === undefined) {
           await requireNoAvailabilityConflict(
             transaction,
             this.availabilityTable,
@@ -879,34 +907,14 @@ export class PostgresBookingRequestRepository implements BookingRequestRepositor
             record.arrival,
             record.departure,
           );
-          await requireNoICalConflict(
-            transaction,
-            this.icalBlocksTable,
-            organizationId,
-            property,
-            record.arrival,
-            record.departure,
-          );
-        } catch (error) {
-          if (error instanceof PersistenceError && error.code === 'availability_conflict') {
-            return { request: record, available: false };
-          }
-          throw error;
         }
-        return { request: record, available: true };
-      }
-      const hold = await this.loadActiveHold(transaction, organizationId, property, record, at);
-      if (hold === null) {
-        return { request: await this.expireLoaded(transaction, record, at), available: false };
-      }
-      try {
         await requireNoICalConflict(
           transaction,
           this.icalBlocksTable,
           organizationId,
           property,
-          hold.arrival as string,
-          hold.departure as string,
+          stay.arrival as string,
+          stay.departure as string,
         );
       } catch (error) {
         if (error instanceof PersistenceError && error.code === 'availability_conflict') {

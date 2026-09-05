@@ -6,7 +6,6 @@ import type {
 import { freezePropertyConfigurationState, parsePropertyConfiguration } from './parser.js';
 
 const constructionToken = Symbol('PropertyConfiguration construction token');
-const canonicalInstances = new WeakSet<object>();
 const stateByInstance = new WeakMap<object, PropertyConfigurationState>();
 
 function readCanonicalState(instance: object): PropertyConfigurationState {
@@ -26,7 +25,6 @@ class CanonicalPropertyConfiguration {
     }
 
     stateByInstance.set(this, state);
-    canonicalInstances.add(this);
     Object.freeze(this);
   }
 
@@ -90,7 +88,7 @@ class CanonicalPropertyConfiguration {
 Object.freeze(CanonicalPropertyConfiguration.prototype);
 
 export function isPropertyConfiguration(value: unknown): value is PropertyConfiguration {
-  return typeof value === 'object' && value !== null && canonicalInstances.has(value);
+  return typeof value === 'object' && value !== null && stateByInstance.has(value);
 }
 
 export function createPropertyConfiguration(input: unknown): PropertyConfigurationResult {

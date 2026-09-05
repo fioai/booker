@@ -208,6 +208,9 @@ describe('PostgreSQL request-to-book lifecycle', () => {
         input(`public-intervening-${blockKind}-${runId}`),
         publicOptions(`public-intervening-${blockKind}-key`),
       );
+      await expect(
+        repository.recheckAvailability({ organizationId }, propertyId, submitted.id),
+      ).resolves.toMatchObject({ available: true, request: { status: 'pending' } });
       if (blockKind === 'ical') {
         await pool?.query(
           `
@@ -1382,6 +1385,28 @@ describe('PostgreSQL request-to-book lifecycle', () => {
     });
     const row = await pool?.query(`SELECT status, last_error_code FROM ${table('booking_outbox')}`);
     expect(row?.rows).toEqual([{ status: 'failed', last_error_code: 'max_attempts' }]);
+  });
+
+  it('expires a held request when its inventory has already been released', async () => {
+    const submitted = await repository.submit(
+      { organizationId },
+      propertyId,
+      input(`released-hold-${runId}`),
+      { idempotencyKey: 'released-hold-key' },
+    );
+    await pool?.query(
+      `UPDATE ${table('availability_blocks')} SET status = 'released', released_at = $2 WHERE record_id = $1`,
+      [submitted.id, now],
+    );
+
+    await expect(
+      repository.recheckAvailability({ organizationId }, propertyId, submitted.id),
+    ).resolves.toMatchObject({ available: false, request: { status: 'expired' } });
+    await expect(
+      repository.find({ organizationId }, propertyId, submitted.id),
+    ).resolves.toMatchObject({
+      status: 'expired',
+    });
   });
 
   it('approves by atomically rechecking and promoting the hold, and rejects illegal repeats', async () => {

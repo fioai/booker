@@ -17,7 +17,10 @@ import type {
 
 export type PublicBookingScope = OrganizationScope;
 
-export type PublicBookingRequestRepository = Pick<BookingRequestRepository, 'submit'>;
+export type PublicBookingRequestRepository = Pick<
+  BookingRequestRepository,
+  'findByIdempotencyKey' | 'submit'
+>;
 
 export interface PublicBookingApiDependencies {
   readonly properties: Pick<PropertyRepository, 'findPublicById'>;

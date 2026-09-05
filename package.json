@@ -14,6 +14,7 @@
     "test": "vitest run packages apps/api tests/hardening",
     "test:integration": "node scripts/run-integration-tests.mjs",
     "start": "node scripts/run-api.mjs",
+    "demo": "corepack pnpm build && node examples/cabin/server.mjs",
     "build": "tsc -b --pretty false",
     "check:env": "node scripts/check-env.mjs --template",
     "check:env:runtime": "node scripts/check-env.mjs --runtime",
@@ -22,7 +23,8 @@
     "smoke:request-to-book": "node scripts/smoke-request-to-book.mjs",
     "backup:restore": "node scripts/backup-restore-check.mjs",
     "scan:secrets": "node scripts/check-secrets.mjs",
-    "audit:dependencies": "corepack pnpm audit --prod --audit-level high",
+    "scan:history": "node scripts/check-secrets-history.mjs",
+    "audit:dependencies": "corepack pnpm audit --audit-level moderate",
     "docker:clean-room": "node scripts/docker-clean-room.mjs",
     "check:architecture": "node scripts/check-architecture-boundaries.mjs",
     "check:sdk-package": "node scripts/check-sdk-package.mjs",
@@ -39,6 +41,6 @@
     "prettier": "3.5.3",
     "typescript": "5.8.3",
     "typescript-eslint": "8.34.1",
-    "vitest": "3.2.4"
+    "vitest": "3.2.6"
   }
 }
