@@ -26,8 +26,8 @@ and metadata review before updating the hashes in `scripts/lib/secret-scanner.mj
 | Path                              | SHA-256                                                            |
 | --------------------------------- | ------------------------------------------------------------------ |
 | `examples/cabin/public/cabin.jpg` | `bf2c83bdffd897050828a39d5ef2f2957e5b8fb79a85c94d71aac1b96691b3a5` |
-| `docs/images/cabin-demo.jpg`      | `308ba73b62b061a86715d17c897c2691273add7fc2b917c99c23e24888042806` |
-| `docs/images/owner-inbox.jpg`     | `0d0053356d6aefa711f281e3f3ca6214bf2de43f0026a632a54448ef28596b4e` |
+| `docs/images/cabin-demo.jpg`      | `d57ac27f259ca642cb116b3c7a759edab2424be93209905ca45d0e5e12941df0` |
+| `docs/images/owner-inbox.jpg`     | `55e4aa9b427205e562912c0783ad2c027d37f3fc7730c58c2b8be36e14c33924` |
 
 Earlier versions were reviewed on the same date and remain reachable through local Git refs,
 including saved worktree snapshots. Their exact hashes remain accepted so history scans can
@@ -35,6 +35,10 @@ inspect them. The generated PNG has been removed from the current example.
 
 | Earlier path                      | SHA-256                                                            |
 | --------------------------------- | ------------------------------------------------------------------ |
+| `docs/images/cabin-demo.jpg`      | `756fca7d0db28fccbc2b427436ef6fa05678f5b7a3b941874de0587977d2eed5` |
+| `docs/images/owner-inbox.jpg`     | `858a9f57d26b8995771a0b61032ab85888bbb14e62b54d9c7a53c5d32cbb33b1` |
+| `docs/images/cabin-demo.jpg`      | `308ba73b62b061a86715d17c897c2691273add7fc2b917c99c23e24888042806` |
+| `docs/images/owner-inbox.jpg`     | `0d0053356d6aefa711f281e3f3ca6214bf2de43f0026a632a54448ef28596b4e` |
 | `docs/images/cabin-demo.jpg`      | `a9eba6ee33e494e465ffb4e63207e447447681bf5a776c2b77b73f24416a16b9` |
 | `examples/cabin/public/cabin.png` | `492f3cf6b1727df5bef3b267a98cfc9a521ef8cf6bd8ce919575ee22d8115790` |
 | `docs/images/cabin-demo.jpg`      | `0006a1b513ca714f201aaaaecec2ac9591dab7aaa9412b80d098510489af3aa7` |

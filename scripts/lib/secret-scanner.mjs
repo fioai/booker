@@ -55,6 +55,8 @@ const REVIEWED_DEMO_IMAGES = new Map([
   [
     'docs/images/cabin-demo.jpg',
     [
+      'd57ac27f259ca642cb116b3c7a759edab2424be93209905ca45d0e5e12941df0',
+      '756fca7d0db28fccbc2b427436ef6fa05678f5b7a3b941874de0587977d2eed5',
       '308ba73b62b061a86715d17c897c2691273add7fc2b917c99c23e24888042806',
       'a9eba6ee33e494e465ffb4e63207e447447681bf5a776c2b77b73f24416a16b9',
       '0006a1b513ca714f201aaaaecec2ac9591dab7aaa9412b80d098510489af3aa7',
@@ -63,6 +65,8 @@ const REVIEWED_DEMO_IMAGES = new Map([
   [
     'docs/images/owner-inbox.jpg',
     [
+      '55e4aa9b427205e562912c0783ad2c027d37f3fc7730c58c2b8be36e14c33924',
+      '858a9f57d26b8995771a0b61032ab85888bbb14e62b54d9c7a53c5d32cbb33b1',
       '0d0053356d6aefa711f281e3f3ca6214bf2de43f0026a632a54448ef28596b4e',
       '442c80ef7a701f4be25d703d03ff5307bda67694145a27d0a14f808c32af2c90',
     ],

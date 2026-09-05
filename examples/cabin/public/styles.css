@@ -5,12 +5,12 @@
     BlinkMacSystemFont,
     'Segoe UI',
     sans-serif;
-  color: #292e29;
+  color: #252a2d;
   background: #fff;
   font-synthesis: none;
-  --green: #355c46;
-  --muted: #62675f;
-  --line: #dedfd8;
+  --accent: #283a42;
+  --muted: #646a6d;
+  --line: #dce0e1;
 }
 * {
   box-sizing: border-box;
@@ -34,20 +34,20 @@ textarea {
   font: inherit;
 }
 :focus-visible {
-  outline: 3px solid #9a602c;
+  outline: 3px solid #326278;
   outline-offset: 3px;
 }
 button {
   cursor: pointer;
   border: 1px solid transparent;
-  border-radius: 4px;
-  padding: 0.7rem 1rem;
+  border-radius: 2px;
+  padding: 0.8rem 1.4rem;
   color: #fff;
-  background: var(--green);
-  font-weight: 600;
+  background: var(--accent);
+  font-weight: 500;
 }
 button:hover {
-  background: #274534;
+  background: #172a33;
 }
 button:disabled {
   opacity: 0.55;
@@ -57,12 +57,13 @@ input,
 select,
 textarea {
   display: block;
+  font-size: 1rem;
   width: 100%;
   min-width: 0;
-  margin-top: 0.3rem;
-  padding: 0.65rem;
-  border: 1px solid #b6bcb2;
-  border-radius: 3px;
+  margin-top: 0.5rem;
+  padding: 0.8rem;
+  border: 1px solid #898f92;
+  border-radius: 2px;
   background: #fff;
   color: inherit;
 }
@@ -72,7 +73,7 @@ textarea {
 label {
   display: block;
   min-width: 0;
-  margin-bottom: 1rem;
+  margin-bottom: 1.5rem;
   font-size: 0.875rem;
   font-weight: 500;
 }
@@ -109,32 +110,29 @@ p {
   margin-bottom: 1rem;
 }
 .wrap {
-  width: min(1120px, calc(100% - 4rem));
+  width: min(1120px, calc(100% - 6rem));
   margin-inline: auto;
 }
 .demo-bar {
   padding: 0.45rem 1rem;
   text-align: center;
   border-bottom: 1px solid var(--line);
-  background: #f4f4f0;
+  background: #f5f6f6;
   color: var(--muted);
   font-size: 0.875rem;
-}
-.demo-bar a {
-  margin-left: 0.75rem;
 }
 .site-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1.5rem;
-  padding-block: 1.25rem;
-  border-bottom: 1px solid var(--line);
+  padding-block: 2.25rem;
 }
 .brand {
   margin: 0;
-  font-size: 1.125rem;
-  font-weight: 650;
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: 0;
   text-decoration: none;
 }
 .brand a {
@@ -142,7 +140,8 @@ p {
 }
 nav {
   display: flex;
-  gap: 1.5rem;
+  align-items: center;
+  gap: 2.5rem;
   font-size: 0.9375rem;
 }
 nav a {
@@ -151,12 +150,17 @@ nav a {
 nav a:hover {
   text-decoration: underline;
 }
+.booking-link {
+  border-bottom: 1px solid currentColor;
+}
+.site-header nav a {
+  padding-block: 0.5rem;
+}
 .guest-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 350px;
-  gap: 3rem;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr);
+  column-gap: 5rem;
   align-items: start;
-  padding-block: 2rem 3rem;
 }
 .cabin-photo {
   margin: 0;
@@ -165,33 +169,62 @@ nav a:hover {
   display: block;
   width: 100%;
   height: auto;
-  border-radius: 3px;
+  aspect-ratio: 2.2;
+  object-fit: cover;
+  object-position: 50% 58%;
 }
 figcaption {
-  margin-top: 0.6rem;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+  margin-top: 1rem;
   color: var(--muted);
   font-size: 0.8125rem;
   line-height: 1.5;
 }
 .property-details {
-  padding-block: 1.5rem;
-  border-bottom: 1px solid var(--line);
-  scroll-margin-top: 1rem;
-}
-.property-details:last-child {
-  border-bottom: 0;
+  max-width: 680px;
+  margin: 4rem auto 5rem;
+  scroll-margin-top: 2rem;
 }
 .property-details p {
   margin-bottom: 0;
   white-space: pre-line;
   overflow-wrap: anywhere;
 }
+#property-summary {
+  font-size: 1.125rem;
+  line-height: 1.8;
+}
+.host-notes {
+  margin-top: 2.5rem;
+  line-height: 1.8;
+}
+.host-notes h2 {
+  margin-bottom: 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--muted);
+}
 .booking-panel {
   padding: 1.5rem;
   border: 1px solid var(--line);
-  border-radius: 4px;
-  background: #f8f8f5;
+  border-radius: 2px;
+  background: #f5f6f6;
   scroll-margin-top: 1rem;
+}
+.booking-area {
+  max-width: 880px;
+  margin-inline: auto;
+  padding-block: 3rem 5rem;
+  border-top: 1px solid var(--line);
+  scroll-margin-top: 2rem;
+}
+#booking-title {
+  margin-bottom: 2rem;
+  font-size: 1.25rem;
+  font-weight: 500;
 }
 .muted {
   color: var(--muted);
@@ -202,20 +235,28 @@ figcaption {
 }
 .date-fields {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  align-items: end;
+  gap: 1.5rem;
+}
+.date-fields label {
+  margin-bottom: 0;
 }
 .contact-fields {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(85px, 1fr);
-  gap: 0.75rem;
+  gap: 1.5rem;
 }
-.booking-panel button:not(.text-button) {
+.booking-panel button:not(.text-button),
+#send-request {
   width: 100%;
+}
+#guest-form {
+  margin-top: 3rem;
 }
 .feedback {
   font-size: 0.9375rem;
-  margin: 1rem 0;
+  margin: 1.5rem 0;
 }
 .feedback:empty {
   display: none;
@@ -224,9 +265,7 @@ figcaption {
   color: #963a30;
 }
 .quote {
-  border-top: 1px solid var(--line);
-  padding-top: 1rem;
-  margin-top: 1.25rem;
+  margin-top: 3rem;
 }
 dl {
   margin: 0 0 1rem;
@@ -235,15 +274,15 @@ dl > div {
   display: flex;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 0.5rem;
+  margin-bottom: 1rem;
 }
 dd {
   margin: 0;
 }
 .quote-total {
   border-top: 1px solid var(--line);
-  margin-top: 0.75rem;
-  padding-top: 0.75rem;
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
   font-weight: 600;
 }
 #currency {
@@ -256,18 +295,17 @@ dd {
   justify-content: space-between;
   align-items: baseline;
   gap: 0.25rem 0.75rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--line);
-  margin-block: 1.25rem 0.75rem;
+  margin-bottom: 1.5rem;
 }
-.form-heading h3 {
+.form-heading h2 {
   margin: 0;
+  font-size: 1rem;
 }
 .text-button {
   background: none;
   border: 0;
   padding: 0;
-  color: var(--green);
+  color: var(--accent);
   font-size: 0.875rem;
   font-weight: 500;
   text-decoration: underline;
@@ -275,21 +313,19 @@ dd {
 }
 .text-button:hover {
   background: none;
-  color: #1e3828;
+  color: #172a33;
 }
 .secondary {
-  background: #e7ece5;
-  color: #294430;
+  background: #edf0f1;
+  color: #34464e;
 }
 .secondary:hover {
-  background: #dce4d8;
+  background: #e0e6e8;
 }
 .request-result {
-  border-top: 1px solid var(--line);
-  margin-top: 1.25rem;
-  padding-top: 1.25rem;
+  max-width: 40rem;
 }
-.request-result h3 {
+.request-result h2 {
   margin-top: 1rem;
 }
 .status {
@@ -323,9 +359,12 @@ dd {
   justify-content: space-between;
   gap: 1rem;
   border-top: 1px solid var(--line);
-  padding-block: 1.25rem;
-  font-size: 0.875rem;
+  padding-block: 2rem;
+  font-size: 0.8125rem;
   color: var(--muted);
+}
+.site-footer nav {
+  font-size: inherit;
 }
 .owner-main {
   padding-block: 2rem;
@@ -392,44 +431,51 @@ dd {
 }
 .empty-state {
   padding: 2rem;
-  background: #f8f8f5;
+  background: #f5f6f6;
   border: 1px solid var(--line);
-}
-@media (min-width: 961px) {
-  .guest-layout > .booking-panel {
-    position: sticky;
-    top: 1.5rem;
-  }
 }
 @media (max-width: 960px) {
   .wrap {
     width: calc(100% - 3rem);
   }
   .guest-layout {
-    grid-template-columns: minmax(0, 1fr) 320px;
-    gap: 1.75rem;
+    column-gap: 3rem;
   }
 }
 @media (max-width: 760px) {
   .wrap {
-    width: calc(100% - 2rem);
+    width: calc(100% - 2.5rem);
   }
   .guest-layout {
     grid-template-columns: minmax(0, 1fr);
-    gap: 1rem;
-    padding-top: 1.5rem;
   }
   .site-header {
     flex-wrap: wrap;
-    gap: 0.75rem;
+    gap: 0.75rem 1.5rem;
+    padding-block: 1.75rem;
   }
   nav {
     flex-wrap: wrap;
-    gap: 0.75rem 1.25rem;
+    gap: 0.75rem 1.5rem;
     font-size: 0.875rem;
   }
   .booking-panel {
     padding: 1.25rem;
+  }
+  .property-details {
+    margin-block: 3rem;
+  }
+  .booking-area {
+    padding-block: 2.5rem 3rem;
+  }
+  .date-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .date-fields button {
+    grid-column: 1 / -1;
+  }
+  .cabin-photo img {
+    aspect-ratio: 16 / 9;
   }
   .owner-heading {
     align-items: start;
@@ -449,12 +495,8 @@ dd {
     gap: 0.5rem;
   }
 }
-@media (max-width: 420px) {
-  .date-fields {
-    grid-template-columns: 1fr;
-  }
-}
 @media (max-width: 380px) {
+  .date-fields,
   .contact-fields {
     grid-template-columns: 1fr;
   }

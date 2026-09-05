@@ -12,115 +12,111 @@
     <script type="module" src="/guest.js"></script>
   </head>
   <body>
-    <div class="demo-bar">
-      Local example · Fictional property and guest details
-      <a href="https://github.com/fioai/booking-engine">Source code</a>
-    </div>
     <header class="site-header wrap">
       <h1 class="brand"><a id="property-title" href="/">Juniper Cabin</a></h1>
       <nav aria-label="Main">
-        <a href="#about">About the cabin</a><a href="#booking">Check dates</a
-        ><a href="/owner" target="_blank" rel="noopener">Owner inbox</a>
+        <a href="#about">The cabin</a><a class="booking-link" href="#booking">Check dates</a>
       </nav>
     </header>
-    <main class="wrap guest-layout">
-      <section class="property" aria-labelledby="property-title">
-        <figure class="cabin-photo">
-          <img
-            src="/cabin.jpg"
-            width="1920"
-            height="1080"
-            alt="A timber cabin with tall windows and a deck among pine trees, with snow on the ground."
-          />
-          <figcaption>
-            Illustrative photo: Pinecone Cottage, California ·
+    <main class="wrap" aria-labelledby="property-title">
+      <figure class="cabin-photo">
+        <img
+          src="/cabin.jpg"
+          width="1920"
+          height="1080"
+          alt="A timber cabin with tall windows and a deck among pine trees, with snow on the ground."
+        />
+        <figcaption>
+          <span>Pinecone Cottage, California. Illustrative photograph.</span>
+          <span>
             <a
               href="https://commons.wikimedia.org/wiki/File:Evergreen_Dorrington_Pinecone_Cottage_exterior.jpg"
               >Bobbyvaughnevergreen</a
             >
-            ·
-            <a href="https://creativecommons.org/publicdomain/zero/1.0/">CC0</a>
-          </figcaption>
-        </figure>
-        <section id="about" class="property-details" aria-labelledby="about-title">
-          <h2 id="about-title">About the cabin</h2>
-          <p id="property-summary">Loading property details…</p>
-        </section>
-        <section class="property-details" aria-labelledby="host-title">
-          <h2 id="host-title">From the host</h2>
+            · <a href="https://creativecommons.org/publicdomain/zero/1.0/">CC0</a>
+          </span>
+        </figcaption>
+      </figure>
+      <section id="about" class="property-details" aria-label="About the cabin">
+        <p id="property-summary">Loading property details…</p>
+        <div class="host-notes">
+          <h2>From the host</h2>
           <p id="host-notes"></p>
-        </section>
+        </div>
       </section>
-      <aside id="booking" class="booking-panel" aria-labelledby="booking-title">
-        <h2 id="booking-title">Request a stay</h2>
-        <p>Choose dates to check availability and see the full price.</p>
+      <section id="booking" class="booking-area" aria-labelledby="booking-title">
         <form id="dates-form">
+          <h2 id="booking-title">Request a stay</h2>
           <div class="date-fields">
             <label>Check-in<input id="arrival" name="arrival" type="date" required /></label
             ><label>Check-out<input id="departure" name="departure" type="date" required /></label>
+            <button id="check-dates" type="submit">Check availability</button>
           </div>
-          <button id="check-dates" type="submit">Check availability</button>
         </form>
         <p id="availability-message" class="feedback" role="status"></p>
-        <section id="quote" class="quote" aria-label="Price breakdown" hidden>
-          <dl>
-            <div>
-              <dt id="night-label">Your nights</dt>
-              <dd id="night-total"></dd>
+        <div class="guest-layout">
+          <section id="quote" class="quote" aria-label="Price breakdown" hidden>
+            <dl>
+              <div>
+                <dt id="night-label">Your nights</dt>
+                <dd id="night-total"></dd>
+              </div>
+              <div>
+                <dt>Cleaning fee</dt>
+                <dd id="cleaning-total"></dd>
+              </div>
+              <div class="quote-total">
+                <dt>Total <span id="currency"></span></dt>
+                <dd id="quote-total"></dd>
+              </div>
+            </dl>
+            <p class="small muted">
+              No payment is collected. This request does not reserve your dates until approved.
+            </p>
+          </section>
+          <form id="guest-form" aria-labelledby="guest-title" hidden>
+            <div class="form-heading">
+              <h2 id="guest-title">Guest details</h2>
+              <button type="button" id="sample-guest" class="text-button">
+                Use sample details
+              </button>
             </div>
-            <div>
-              <dt>Cleaning fee</dt>
-              <dd id="cleaning-total"></dd>
-            </div>
-            <div class="quote-total">
-              <dt>Total <span id="currency"></span></dt>
-              <dd id="quote-total"></dd>
-            </div>
-          </dl>
-          <p class="small muted">
-            No payment is collected. This request does not reserve your dates until approved.
-          </p>
-        </section>
-        <form id="guest-form" hidden>
-          <div class="form-heading">
-            <h3>Guest details</h3>
-            <button type="button" id="sample-guest" class="text-button">Use sample details</button>
-          </div>
-          <label
-            >Your name<input name="guestName" autocomplete="name" maxlength="120" required
-          /></label>
-          <div class="contact-fields">
             <label
-              >Email<input
-                name="guestEmail"
-                type="email"
-                autocomplete="email"
-                maxlength="254"
-                required /></label
-            ><label
-              >Guests<select name="guestCount" required>
-                <option value="">Loading…</option>
-              </select></label
-            >
-          </div>
-          <label
-            >A note for your host <span class="muted">(optional)</span
-            ><textarea
-              name="message"
-              rows="2"
-              maxlength="2000"
-              placeholder="Questions or arrival details"
-            ></textarea>
-          </label>
-          <p class="small muted">
-            Demo only: use fictional details. Requests are stored in your local database. No emails
-            are sent.
-          </p>
-          <button id="send-request" type="submit">Request to book</button>
-        </form>
+              >Your name<input name="guestName" autocomplete="name" maxlength="120" required
+            /></label>
+            <div class="contact-fields">
+              <label
+                >Email<input
+                  name="guestEmail"
+                  type="email"
+                  autocomplete="email"
+                  maxlength="254"
+                  required /></label
+              ><label
+                >Guests<select name="guestCount" required>
+                  <option value="">Loading…</option>
+                </select></label
+              >
+            </div>
+            <label
+              >A note for your host <span class="muted">(optional)</span
+              ><textarea
+                name="message"
+                rows="2"
+                maxlength="2000"
+                placeholder="Questions or arrival details"
+              ></textarea>
+            </label>
+            <p class="small muted">
+              Demo only: use fictional details. Requests are stored in your local database. No
+              emails are sent.
+            </p>
+            <button id="send-request" type="submit">Request to book</button>
+          </form>
+        </div>
         <section id="request-result" class="request-result" aria-labelledby="request-title" hidden>
           <span id="request-status" class="status">Pending</span>
-          <h3 id="request-title" tabindex="-1">Your request is with the host.</h3>
+          <h2 id="request-title" tabindex="-1">Your request is with the host.</h2>
           <p id="request-description"></p>
           <p id="request-reference" class="small muted reference"></p>
           <button id="refresh-status" class="secondary" type="button">Refresh decision</button>
@@ -132,7 +128,14 @@
         </section>
         <p id="request-message" class="feedback" role="status"></p>
         <noscript>This example needs JavaScript to check availability and request a stay.</noscript>
-      </aside>
+      </section>
     </main>
+    <footer class="wrap site-footer">
+      <span>Local example · Fictional property and guest details</span>
+      <nav aria-label="Demo">
+        <a href="/owner" target="_blank" rel="noopener">Owner inbox</a>
+        <a href="https://github.com/fioai/booking-engine">Source code</a>
+      </nav>
+    </footer>
   </body>
 </html>
