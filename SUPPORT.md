@@ -24,7 +24,7 @@ other secrets in an issue or support request.
 
 ## Questions and usage help
 
-For a normal question, open a [blank GitHub issue](https://github.com/fioai/booking-engine/issues/new). Include
+For a normal question, open a [blank GitHub issue](https://github.com/fioai/booker/issues/new). Include
 the relevant SDK or runtime version, Node.js and package-manager versions, operating system, the
 smallest example that demonstrates the question, and any error output with secrets removed.
 
@@ -33,7 +33,7 @@ There is no guaranteed response time.
 
 ## Bug reports
 
-Use the [Bug report form](https://github.com/fioai/booking-engine/issues/new?template=bug.yml). Include:
+Use the [Bug report form](https://github.com/fioai/booker/issues/new?template=bug.yml). Include:
 
 - the exact version and whether the report uses the SDK or the runtime;
 - a minimal reproduction and exact steps;
@@ -47,10 +47,10 @@ security path below.
 
 ## Feature requests
 
-Use the [Feature request form](https://github.com/fioai/booking-engine/issues/new?template=feature.yml). Explain
+Use the [Feature request form](https://github.com/fioai/booker/issues/new?template=feature.yml). Explain
 the user problem, proposed behavior, affected public contract, alternatives considered, and any
 migration or privacy concerns. A feature request is not a commitment to implement the proposal.
 
 ## Security reports
 
-Report suspected vulnerabilities privately through [GitHub Security Advisories](https://github.com/fioai/booking-engine/security/advisories/new), as described in [`SECURITY.md`](SECURITY.md). Do not open a public issue for an undisclosed vulnerability.
+Report suspected vulnerabilities privately through [GitHub Security Advisories](https://github.com/fioai/booker/security/advisories/new), as described in [`SECURITY.md`](SECURITY.md). Do not open a public issue for an undisclosed vulnerability.

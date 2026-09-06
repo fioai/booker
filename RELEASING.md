@@ -155,4 +155,4 @@ verification evidence is retained outside the repository without secrets or pers
 
 - Keep the original tag and release evidence. Record the deprecation and replacement in
   [`CHANGELOG.md`](CHANGELOG.md), and communicate the action through the normal issue route.
-- For a vulnerability, do not use a public issue. Use the [GitHub Security Advisory route](https://github.com/fioai/booking-engine/security/advisories/new), rotate affected credentials, and coordinate any deprecation or runtime rollback privately.
+- For a vulnerability, do not use a public issue. Use the [GitHub Security Advisory route](https://github.com/fioai/booker/security/advisories/new), rotate affected credentials, and coordinate any deprecation or runtime rollback privately.

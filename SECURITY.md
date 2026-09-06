@@ -1,7 +1,7 @@
 # Security policy
 
 Report suspected vulnerabilities through [GitHub Security Advisories for
-`fioai/booking-engine`](https://github.com/fioai/booking-engine/security/advisories/new). Please do not open a
+`fioai/booker`](https://github.com/fioai/booker/security/advisories/new). Please do not open a
 public issue for an undisclosed vulnerability.
 
 The `0.1.x` release line of `@booking-engine/sdk-typescript` is the only intended public package.
