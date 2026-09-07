@@ -13,6 +13,7 @@ import {
 } from '../src/fetch.js';
 import { ICalParseError, parseICalCalendar, type ICalEvent } from '../src/parse.js';
 import {
+  ICalStaleWriteError,
   createMemoryICalBlockStore,
   reconcileICalFeed,
   type ICalBlockRecord,
@@ -737,6 +738,102 @@ describe('tenant-scoped idempotent iCalendar reconciliation', () => {
     expect(second.decisions).toMatchObject([{ action: 'unchanged', uid: event().uid }]);
     expect(await store.list(scopeA, sourceId)).toHaveLength(1);
   });
+
+  it.each([
+    { name: 'creation', history: [], incoming: event(), operation: 'upsert' as const },
+    {
+      name: 'unchanged snapshot',
+      history: [event()],
+      incoming: event(),
+      operation: 'upsert' as const,
+    },
+    {
+      name: 'versioned update',
+      history: [event({ sequence: 1 })],
+      incoming: event({ sequence: 2, departure: '2026-08-15' }),
+      operation: 'upsert' as const,
+    },
+    {
+      name: 'cancellation',
+      history: [event({ sequence: 1 })],
+      incoming: event({ status: 'cancelled', sequence: 2 }),
+      operation: 'release' as const,
+    },
+    {
+      name: 'repeated cancellation',
+      history: [event({ sequence: 1 }), event({ status: 'cancelled', sequence: 2 })],
+      incoming: event({ status: 'cancelled', sequence: 3 }),
+      operation: 'release' as const,
+    },
+  ])(
+    'flags a stale $name write and continues with later events',
+    async ({ history, incoming, operation }) => {
+      const store = createMemoryICalBlockStore();
+      for (const previous of history) {
+        await reconcileICalFeed(scopeA, sourceId, [previous], store);
+      }
+      const before = await store.list(scopeA, sourceId);
+      const write = vi.spyOn(store, operation).mockRejectedValueOnce(new ICalStaleWriteError());
+      const later = event({ uid: 'z-later@example.invalid' });
+
+      const result = await reconcileICalFeed(scopeA, sourceId, [later, incoming], store);
+
+      expect(result.decisions).toEqual([
+        { uid: incoming.uid, action: 'needs_review', reason: 'stale_write' },
+        { uid: later.uid, action: 'created' },
+      ]);
+      expect(result.records.filter((record) => record.uid === incoming.uid)).toEqual(before);
+      if (operation === 'release') {
+        expect(write).toHaveBeenCalledExactlyOnceWith(scopeA, sourceId, incoming.uid, {
+          sequence: incoming.sequence,
+          lastModified: incoming.lastModified,
+          summary: incoming.summary,
+        });
+      } else {
+        expect(write).toHaveBeenCalledTimes(2);
+        expect(write).toHaveBeenNthCalledWith(1, scopeA, {
+          ...scopeA,
+          sourceId,
+          uid: incoming.uid,
+          arrival: incoming.arrival,
+          departure: incoming.departure,
+          status: 'active',
+          eventStatus: incoming.status,
+          sequence: incoming.sequence,
+          lastModified: incoming.lastModified,
+          summary: incoming.summary,
+        });
+      }
+    },
+  );
+
+  it.each(['upsert', 'release'] as const)(
+    'propagates unexpected %s failures',
+    async (operation) => {
+      const store = createMemoryICalBlockStore();
+      await reconcileICalFeed(scopeA, sourceId, [event({ sequence: 1 })], store);
+      const failure = new Error('store is unavailable');
+      const write = vi.spyOn(store, operation).mockRejectedValueOnce(failure);
+      const incoming = event({
+        sequence: 2,
+        status: operation === 'release' ? 'cancelled' : 'confirmed',
+      });
+
+      await expect(
+        reconcileICalFeed(
+          scopeA,
+          sourceId,
+          [incoming, event({ uid: 'z-later@example.invalid' })],
+          store,
+        ),
+      ).rejects.toBe(failure);
+      expect(write).toHaveBeenCalledTimes(1);
+      expect(await store.list(scopeA, sourceId)).toMatchObject([
+        { uid: incoming.uid, sequence: 1 },
+      ]);
+      expect(await store.list(scopeA, sourceId)).toHaveLength(1);
+    },
+  );
 
   it('accepts the maximum direct sequence and rejects invalid sequences before store writes', async () => {
     const acceptedStore = createMemoryICalBlockStore();

@@ -5,6 +5,6 @@
     "outDir": "dist",
     "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
   },
-  "references": [{ "path": "../payments" }],
+  "references": [{ "path": "../checkout" }],
   "include": ["src/**/*.ts"]
 }

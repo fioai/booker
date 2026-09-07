@@ -1,5 +1,5 @@
 {
-  "name": "@booking-engine/payments-stripe",
+  "name": "@booking-engine/checkout",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -11,8 +11,5 @@
   },
   "files": [
     "dist"
-  ],
-  "dependencies": {
-    "@booking-engine/payments": "workspace:*"
-  }
+  ]
 }

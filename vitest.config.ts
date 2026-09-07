@@ -17,11 +17,11 @@ export default defineConfig({
       '@booking-engine/database-postgres': fileURLToPath(
         new URL('./packages/database-postgres/src/index.ts', import.meta.url),
       ),
-      '@booking-engine/payments': fileURLToPath(
-        new URL('./packages/payments/src/index.ts', import.meta.url),
+      '@booking-engine/checkout': fileURLToPath(
+        new URL('./packages/checkout/src/index.ts', import.meta.url),
       ),
-      '@booking-engine/payments-stripe': fileURLToPath(
-        new URL('./packages/payments-stripe/src/index.ts', import.meta.url),
+      '@booking-engine/stripe': fileURLToPath(
+        new URL('./packages/stripe/src/index.ts', import.meta.url),
       ),
     },
   },

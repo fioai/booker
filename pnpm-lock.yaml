@@ -49,9 +49,9 @@ importers:
       '@booking-engine/database-postgres':
         specifier: workspace:*
         version: link:../../packages/database-postgres
-      '@booking-engine/payments':
+      '@booking-engine/checkout':
         specifier: workspace:*
-        version: link:../../packages/payments
+        version: link:../../packages/checkout
       '@booking-engine/sdk-typescript':
         specifier: workspace:*
         version: link:../../packages/sdk-typescript
@@ -68,9 +68,9 @@ importers:
       '@booking-engine/channel-ical':
         specifier: workspace:*
         version: link:../channel-ical
-      '@booking-engine/payments':
+      '@booking-engine/checkout':
         specifier: workspace:*
-        version: link:../payments
+        version: link:../checkout
       pg:
         specifier: ^8.22.0
         version: 8.22.0
@@ -79,13 +79,13 @@ importers:
         specifier: ^8.20.0
         version: 8.20.0
 
-  packages/payments: {}
+  packages/checkout: {}
 
-  packages/payments-stripe:
+  packages/stripe:
     dependencies:
-      '@booking-engine/payments':
+      '@booking-engine/checkout':
         specifier: workspace:*
-        version: link:../payments
+        version: link:../checkout
 
   packages/sdk-typescript: {}
 

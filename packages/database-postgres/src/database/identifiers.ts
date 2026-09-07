@@ -20,7 +20,11 @@ const MAX_RECORD_IDENTIFIER_LENGTH = 64;
 
 export function validateRecordIdentifier(
   value: unknown,
-  code: 'invalid_organization_id' | 'invalid_property_id' | 'invalid_availability_id',
+  code:
+    | 'invalid_organization_id'
+    | 'invalid_property_id'
+    | 'invalid_availability_id'
+    | 'invalid_booking_request_id',
 ): asserts value is string {
   if (
     typeof value !== 'string' ||

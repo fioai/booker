@@ -12,7 +12,7 @@ package.
 `@booking-engine/sdk-typescript` is the only intended first-release public package. Version `0.1.0`
 is an unpublished release candidate; publish it only after the annotated `v0.1.0` tag and registry
 publication with provenance. The package has no workspace dependencies. `booking-core`,
-`database-postgres`, `payments`, `payments-stripe`, and `channel-ical` remain private
+`database-postgres`, `checkout`, `stripe`, and `channel-ical` remain private
 implementation packages.
 
 The owner admin is a same-origin, server-rendered reference surface owned by `apps/api`.
@@ -25,11 +25,11 @@ live Stripe payments, notification transport, or background scheduling.
 
 The intended workspace edges are:
 
-- `payments-stripe -> payments`;
-- `database-postgres -> booking-core, payments, channel-ical`;
-- `apps/api -> booking-core, database-postgres, channel-ical, payments, sdk-typescript`.
+- `stripe -> checkout`;
+- `database-postgres -> booking-core, checkout, channel-ical`;
+- `apps/api -> booking-core, database-postgres, channel-ical, checkout, sdk-typescript`.
 
-The SDK, core, iCalendar, and payments packages have no other runtime workspace dependencies.
+The SDK, core, iCalendar, and checkout packages have no other runtime workspace dependencies.
 
 ## Consequences
 

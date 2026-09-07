@@ -2,18 +2,20 @@ import { daysInMonth, daysFromCivil } from './local-date.js';
 import {
   countUnicodeCodePointsV1,
   type PUBLIC_API_ERROR_CODES_V1,
+  type PUBLIC_BED_TYPES_V1,
   PUBLIC_BOOKING_TEXT_CONSTRAINTS_V1,
   type PUBLIC_BOOKING_REQUEST_STATUSES_V1,
   PUBLIC_IDEMPOTENCY_KEY_PATTERN_V1,
   PUBLIC_IDENTIFIER_PATTERN_V1,
   PUBLIC_NONBLANK_CONTROL_SAFE_TEXT_PATTERN_V1,
   PUBLIC_PROPERTY_RESPONSE_BOUNDS_V1,
+  type PUBLIC_PROPERTY_TYPES_V1,
   PUBLIC_VALIDATION_ISSUE_BOUNDS_V1,
   PUBLIC_VALIDATION_ISSUE_FIELD_PATTERN_V1,
   type PUBLIC_VALIDATION_CODES_V1,
-} from './contract-constraints-v1.js';
+} from './constraints.js';
 
-export { PUBLIC_MINOR_AMOUNT_MAXIMUM_V1 } from './contract-constraints-v1.js';
+export { PUBLIC_MINOR_AMOUNT_MAXIMUM_V1 } from './constraints.js';
 
 /** Public contract versions are explicit so consumers do not depend on private shapes. */
 export type PublicApiVersionV1 = 'v1';
@@ -47,16 +49,9 @@ const UNKNOWN_FIELD_ISSUE_MESSAGE_V1 =
 const PROPERTY_ID_ISSUE_FIELD_V1 = 'propertyId';
 const INVALID_PROPERTY_ID_ISSUE_MESSAGE_V1 = 'propertyId must be a valid public identifier.';
 
-export type PublicPropertyTypeV1 =
-  | 'apartment'
-  | 'bungalow'
-  | 'cabin'
-  | 'cottage'
-  | 'house'
-  | 'studio'
-  | 'villa';
+export type PublicPropertyTypeV1 = (typeof PUBLIC_PROPERTY_TYPES_V1)[number];
 
-export type PublicBedTypeV1 = 'bunk' | 'double' | 'king' | 'queen' | 'single' | 'sofa-bed';
+export type PublicBedTypeV1 = (typeof PUBLIC_BED_TYPES_V1)[number];
 
 export interface PublicBedConfigurationV1 {
   readonly type: PublicBedTypeV1;

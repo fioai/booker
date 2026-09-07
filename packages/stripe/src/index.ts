@@ -6,8 +6,8 @@ import type {
   MoneyMinor,
   PaymentProvider,
   PaymentWebhookEvent,
-} from '@booking-engine/payments';
-import { createPaymentCheckoutRequest } from '@booking-engine/payments';
+} from '@booking-engine/checkout';
+import { createPaymentCheckoutRequest } from '@booking-engine/checkout';
 
 const DEFAULT_MAX_BODY_BYTES = 262_144;
 const MAX_ALLOWED_BODY_BYTES = 1_048_576;

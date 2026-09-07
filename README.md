@@ -178,17 +178,17 @@ the documented local Compose flow uses host port `15432`.
 | `apps/api`                   | HTTP composition, public booking transport, same-origin server-rendered owner admin | private                     |
 | `packages/booking-core`      | domain invariants, local dates, money, quotes, lifecycle rules                      | private                     |
 | `packages/database-postgres` | scoped PostgreSQL persistence, migrations, canonical projections                    | private                     |
-| `packages/payments`          | payment ports and test-mode lifecycle contracts                                     | private                     |
-| `packages/payments-stripe`   | Stripe adapter seam; not activated by the runtime                                   | private                     |
+| `packages/checkout`          | provider-neutral checkout flow, payment ports, and lifecycle contracts              | private                     |
+| `packages/stripe`            | Stripe checkout and webhook adapter; not activated by the runtime                   | private                     |
 | `packages/channel-ical`      | iCalendar adapter and port                                                          | private                     |
 | `packages/sdk-typescript`    | dependency-free V1 consumer contract and client                                     | **intended public `0.1.x`** |
 
 The intended workspace edges are:
 
 ```text
-payments-stripe -> payments
-database-postgres -> booking-core, payments, channel-ical
-apps/api -> booking-core, database-postgres, channel-ical, payments, sdk-typescript
+stripe -> checkout
+database-postgres -> booking-core, checkout, channel-ical
+apps/api -> booking-core, database-postgres, channel-ical, checkout, sdk-typescript
 ```
 
 Persistence returns canonical domain properties. Only the API mapper serializes SDK V1 property

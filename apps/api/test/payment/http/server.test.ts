@@ -2,7 +2,7 @@ import { request } from 'node:http';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { PaymentCheckoutService } from '@booking-engine/payments';
+import type { PaymentCheckoutService } from '@booking-engine/checkout';
 
 import {
   createApiHttpServer,

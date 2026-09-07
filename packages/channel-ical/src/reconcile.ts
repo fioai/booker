@@ -345,6 +345,86 @@ export async function reconcileICalFeed(
   );
 }
 
+async function reconcileEvent(
+  scope: ICalScope,
+  source: string,
+  event: ICalEvent,
+  previous: ICalBlockRecord | undefined,
+  store: ICalBlockStore,
+): Promise<ICalReconciliationDecision> {
+  if (event.status === 'unknown') {
+    return { uid: event.uid, action: 'needs_review', reason: 'unknown_status' };
+  }
+  if (event.status === 'cancelled') {
+    if (previous === undefined) {
+      return { uid: event.uid, action: 'ignored_cancelled' };
+    }
+    if (previous.status === 'released') {
+      if (versionIsOlder(event, previous)) {
+        return { uid: event.uid, action: 'needs_review', reason: 'stale_cancellation' };
+      }
+      if (versionIsNewer(event, previous)) {
+        await store.release(scope, source, event.uid, {
+          sequence: event.sequence,
+          lastModified: event.lastModified,
+          summary: event.summary,
+        });
+      }
+      return { uid: event.uid, action: 'unchanged' };
+    }
+    if (versionIsOlder(event, previous)) {
+      return { uid: event.uid, action: 'needs_review', reason: 'stale_cancellation' };
+    }
+    if (hasProvenance(previous) && !hasProvenance(event) && !hasSameProvenance(event, previous)) {
+      return {
+        uid: event.uid,
+        action: 'needs_review',
+        reason: 'ambiguous_cancellation_version',
+      };
+    }
+    if (
+      (event.arrival !== previous.arrival || event.departure !== previous.departure) &&
+      !versionIsNewer(event, previous)
+    ) {
+      return {
+        uid: event.uid,
+        action: 'needs_review',
+        reason: 'ambiguous_cancellation_change',
+      };
+    }
+    await store.release(scope, source, event.uid, {
+      sequence: event.sequence,
+      lastModified: event.lastModified,
+      summary: event.summary,
+    });
+    return { uid: event.uid, action: 'released' };
+  }
+
+  const next = activeRecord(scope, source, event);
+  if (previous === undefined) {
+    await store.upsert(scope, next);
+    return { uid: event.uid, action: 'created' };
+  }
+  if (sameEvent(previous, next)) {
+    // Re-assert the exact snapshot against the store even for an apparent no-op.
+    // This lets a PostgreSQL CAS detect a stale read that raced a newer worker.
+    await store.upsert(scope, next);
+    return { uid: event.uid, action: 'unchanged' };
+  }
+  if (previous.status === 'released' && !versionIsNewer(event, previous)) {
+    return {
+      uid: event.uid,
+      action: 'needs_review',
+      reason: 'reappeared_without_new_version',
+    };
+  }
+  if (!versionIsNewer(event, previous)) {
+    return { uid: event.uid, action: 'needs_review', reason: 'ambiguous_change' };
+  }
+  await store.upsert(scope, next);
+  return { uid: event.uid, action: 'updated' };
+}
+
 async function reconcileLocked(
   scope: ICalScope,
   source: string,
@@ -372,130 +452,14 @@ async function reconcileLocked(
       decisions.push({ uid: event.uid, action: 'needs_review', reason: 'duplicate_uid' });
       continue;
     }
-    const previous = existing.get(event.uid);
-    if (event.status === 'unknown') {
-      decisions.push({ uid: event.uid, action: 'needs_review', reason: 'unknown_status' });
-      continue;
-    }
-    if (event.status === 'cancelled') {
-      if (previous === undefined) {
-        decisions.push({ uid: event.uid, action: 'ignored_cancelled' });
-        continue;
-      }
-      if (previous.status === 'released') {
-        if (versionIsOlder(event, previous)) {
-          decisions.push({ uid: event.uid, action: 'needs_review', reason: 'stale_cancellation' });
-          continue;
-        }
-        if (versionIsNewer(event, previous)) {
-          try {
-            await store.release(scope, source, event.uid, {
-              sequence: event.sequence,
-              lastModified: event.lastModified,
-              summary: event.summary,
-            });
-          } catch (error) {
-            if (!(error instanceof ICalStaleWriteError)) {
-              throw error;
-            }
-            decisions.push({ uid: event.uid, action: 'needs_review', reason: 'stale_write' });
-            continue;
-          }
-        }
-        decisions.push({ uid: event.uid, action: 'unchanged' });
-        continue;
-      }
-      if (versionIsOlder(event, previous)) {
-        decisions.push({ uid: event.uid, action: 'needs_review', reason: 'stale_cancellation' });
-        continue;
-      }
-      if (hasProvenance(previous) && !hasProvenance(event) && !hasSameProvenance(event, previous)) {
-        decisions.push({
-          uid: event.uid,
-          action: 'needs_review',
-          reason: 'ambiguous_cancellation_version',
-        });
-        continue;
-      }
-      if (
-        (event.arrival !== previous.arrival || event.departure !== previous.departure) &&
-        !versionIsNewer(event, previous)
-      ) {
-        decisions.push({
-          uid: event.uid,
-          action: 'needs_review',
-          reason: 'ambiguous_cancellation_change',
-        });
-        continue;
-      }
-      try {
-        await store.release(scope, source, event.uid, {
-          sequence: event.sequence,
-          lastModified: event.lastModified,
-          summary: event.summary,
-        });
-      } catch (error) {
-        if (!(error instanceof ICalStaleWriteError)) {
-          throw error;
-        }
-        decisions.push({ uid: event.uid, action: 'needs_review', reason: 'stale_write' });
-        continue;
-      }
-      decisions.push({ uid: event.uid, action: 'released' });
-      continue;
-    }
-
-    const next = activeRecord(scope, source, event);
-    if (previous === undefined) {
-      try {
-        await store.upsert(scope, next);
-      } catch (error) {
-        if (!(error instanceof ICalStaleWriteError)) {
-          throw error;
-        }
-        decisions.push({ uid: event.uid, action: 'needs_review', reason: 'stale_write' });
-        continue;
-      }
-      decisions.push({ uid: event.uid, action: 'created' });
-      continue;
-    }
-    if (sameEvent(previous, next)) {
-      try {
-        // Re-assert the exact snapshot against the store even for an apparent no-op.
-        // This lets a PostgreSQL CAS detect a stale read that raced a newer worker.
-        await store.upsert(scope, next);
-      } catch (error) {
-        if (!(error instanceof ICalStaleWriteError)) {
-          throw error;
-        }
-        decisions.push({ uid: event.uid, action: 'needs_review', reason: 'stale_write' });
-        continue;
-      }
-      decisions.push({ uid: event.uid, action: 'unchanged' });
-      continue;
-    }
-    if (previous.status === 'released' && !versionIsNewer(event, previous)) {
-      decisions.push({
-        uid: event.uid,
-        action: 'needs_review',
-        reason: 'reappeared_without_new_version',
-      });
-      continue;
-    }
-    if (!versionIsNewer(event, previous)) {
-      decisions.push({ uid: event.uid, action: 'needs_review', reason: 'ambiguous_change' });
-      continue;
-    }
     try {
-      await store.upsert(scope, next);
+      decisions.push(await reconcileEvent(scope, source, event, existing.get(event.uid), store));
     } catch (error) {
       if (!(error instanceof ICalStaleWriteError)) {
         throw error;
       }
       decisions.push({ uid: event.uid, action: 'needs_review', reason: 'stale_write' });
-      continue;
     }
-    decisions.push({ uid: event.uid, action: 'updated' });
   }
 
   for (const record of existingRecords) {

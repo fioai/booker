@@ -2,7 +2,7 @@ import { createHmac } from 'node:crypto';
 
 import { describe, expect, it } from 'vitest';
 
-import type { PaymentCheckoutRequest } from '../../payments/src/index.js';
+import type { PaymentCheckoutRequest } from '../../checkout/src/index.js';
 import {
   StripeWebhookError,
   createStripeCheckoutAdapter,

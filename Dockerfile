@@ -20,7 +20,7 @@ RUN rm -rf node_modules apps/*/node_modules packages/*/node_modules \
     && pnpm --filter @booking-engine/api... install --prod --frozen-lockfile --offline --ignore-scripts
 
 # Keep compiled JavaScript, package manifests, migrations, and their dependency links.
-RUN rm -rf packages/payments-stripe \
+RUN rm -rf packages/stripe \
     && find apps packages -type f ! -path '*/node_modules/*' \
        ! -name package.json ! -name LICENSE ! -path '*/dist/*.js' ! -path '*/migrations/*.sql' -delete \
     && find apps packages -type d -empty -delete

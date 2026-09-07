@@ -31,11 +31,11 @@ const windowsLocalDependencyCases = (
 ).flatMap((dependencyField) =>
   (
     [
-      '.\\payments',
-      '..\\payments',
-      '\\payments',
-      '\\\\server\\share\\payments',
-      'C:\\workspace\\payments',
+      '.\\checkout',
+      '..\\checkout',
+      '\\checkout',
+      '\\\\server\\share\\checkout',
+      'C:\\workspace\\checkout',
     ] as const
   ).map((specifier) => [specifier, dependencyField] as const),
 );
@@ -73,13 +73,13 @@ describe('workspace manifest dependency validation', () => {
     expect(
       analyzeRuntimeDependencies('@booking-engine/api', {
         dependencies: {
-          '@booking-engine/booking-core': 'workspace:@booking-engine/payments@*',
+          '@booking-engine/booking-core': 'workspace:@booking-engine/checkout@*',
         },
       }),
     ).toEqual({
       dependencies: ['@booking-engine/booking-core'],
       violations: [
-        '@booking-engine/api dependencies entry @booking-engine/booking-core must use "workspace:*"; found "workspace:@booking-engine/payments@*"',
+        '@booking-engine/api dependencies entry @booking-engine/booking-core must use "workspace:*"; found "workspace:@booking-engine/checkout@*"',
       ],
     });
   });
@@ -88,13 +88,13 @@ describe('workspace manifest dependency validation', () => {
     expect(
       analyzeRuntimeDependencies('@booking-engine/api', {
         optionalDependencies: {
-          'payment-adapter': 'workspace:@booking-engine/payments@*',
+          'payment-adapter': 'workspace:@booking-engine/checkout@*',
         },
       }),
     ).toEqual({
       dependencies: [],
       violations: [
-        '@booking-engine/api optionalDependencies entry payment-adapter uses "workspace:@booking-engine/payments@*"; workspace dependencies must use their canonical package name with "workspace:*"',
+        '@booking-engine/api optionalDependencies entry payment-adapter uses "workspace:@booking-engine/checkout@*"; workspace dependencies must use their canonical package name with "workspace:*"',
       ],
     });
   });
@@ -103,13 +103,13 @@ describe('workspace manifest dependency validation', () => {
     expect(
       analyzeRuntimeDependencies('@booking-engine/api', {
         peerDependencies: {
-          'local-payments': 'workspace:../../packages/payments',
+          'local-checkout': 'workspace:../../packages/checkout',
         },
       }),
     ).toEqual({
       dependencies: [],
       violations: [
-        '@booking-engine/api peerDependencies entry local-payments uses "workspace:../../packages/payments"; workspace dependencies must use their canonical package name with "workspace:*"',
+        '@booking-engine/api peerDependencies entry local-checkout uses "workspace:../../packages/checkout"; workspace dependencies must use their canonical package name with "workspace:*"',
       ],
     });
   });
@@ -118,13 +118,13 @@ describe('workspace manifest dependency validation', () => {
     expect(
       analyzeRuntimeDependencies('@booking-engine/api', {
         dependencies: {
-          'local-payments': 'file:../payments',
+          'local-checkout': 'file:../checkout',
         },
       }),
     ).toEqual({
       dependencies: [],
       violations: [
-        '@booking-engine/api dependencies entry local-payments uses disallowed local-path specifier "file:../payments"; runtime dependencies must use registry specifiers or canonical internal package names with "workspace:*"',
+        '@booking-engine/api dependencies entry local-checkout uses disallowed local-path specifier "file:../checkout"; runtime dependencies must use registry specifiers or canonical internal package names with "workspace:*"',
       ],
     });
   });
@@ -133,13 +133,13 @@ describe('workspace manifest dependency validation', () => {
     expect(
       analyzeRuntimeDependencies('@booking-engine/api', {
         optionalDependencies: {
-          'local-payments': 'link:../payments',
+          'local-checkout': 'link:../checkout',
         },
       }),
     ).toEqual({
       dependencies: [],
       violations: [
-        '@booking-engine/api optionalDependencies entry local-payments uses disallowed local-path specifier "link:../payments"; runtime dependencies must use registry specifiers or canonical internal package names with "workspace:*"',
+        '@booking-engine/api optionalDependencies entry local-checkout uses disallowed local-path specifier "link:../checkout"; runtime dependencies must use registry specifiers or canonical internal package names with "workspace:*"',
       ],
     });
   });
@@ -148,13 +148,13 @@ describe('workspace manifest dependency validation', () => {
     expect(
       analyzeRuntimeDependencies('@booking-engine/api', {
         peerDependencies: {
-          'local-payments': '../payments',
+          'local-checkout': '../checkout',
         },
       }),
     ).toEqual({
       dependencies: [],
       violations: [
-        '@booking-engine/api peerDependencies entry local-payments uses disallowed local-path specifier "../payments"; runtime dependencies must use registry specifiers or canonical internal package names with "workspace:*"',
+        '@booking-engine/api peerDependencies entry local-checkout uses disallowed local-path specifier "../checkout"; runtime dependencies must use registry specifiers or canonical internal package names with "workspace:*"',
       ],
     });
   });
@@ -163,13 +163,13 @@ describe('workspace manifest dependency validation', () => {
     expect(
       analyzeRuntimeDependencies('@booking-engine/api', {
         dependencies: {
-          'local-payments': '/workspace/payments',
+          'local-checkout': '/workspace/checkout',
         },
       }),
     ).toEqual({
       dependencies: [],
       violations: [
-        '@booking-engine/api dependencies entry local-payments uses disallowed local-path specifier "/workspace/payments"; runtime dependencies must use registry specifiers or canonical internal package names with "workspace:*"',
+        '@booking-engine/api dependencies entry local-checkout uses disallowed local-path specifier "/workspace/checkout"; runtime dependencies must use registry specifiers or canonical internal package names with "workspace:*"',
       ],
     });
   });
@@ -180,13 +180,13 @@ describe('workspace manifest dependency validation', () => {
       expect(
         analyzeRuntimeDependencies('@booking-engine/api', {
           [dependencyField]: {
-            'local-payments': specifier,
+            'local-checkout': specifier,
           },
         }),
       ).toEqual({
         dependencies: [],
         violations: [
-          `@booking-engine/api ${dependencyField} entry local-payments uses disallowed local-path specifier ${JSON.stringify(specifier)}; runtime dependencies must use registry specifiers or canonical internal package names with "workspace:*"`,
+          `@booking-engine/api ${dependencyField} entry local-checkout uses disallowed local-path specifier ${JSON.stringify(specifier)}; runtime dependencies must use registry specifiers or canonical internal package names with "workspace:*"`,
         ],
       });
     },
@@ -196,13 +196,13 @@ describe('workspace manifest dependency validation', () => {
     expect(
       analyzeRuntimeDependencies('@booking-engine/api', {
         dependencies: {
-          'payment-adapter': 'npm:@booking-engine/payments@*',
+          'payment-adapter': 'npm:@booking-engine/checkout@*',
         },
       }),
     ).toEqual({
       dependencies: [],
       violations: [
-        '@booking-engine/api dependencies entry payment-adapter uses internal npm alias "npm:@booking-engine/payments@*"; internal dependencies must use their canonical package name with "workspace:*"',
+        '@booking-engine/api dependencies entry payment-adapter uses internal npm alias "npm:@booking-engine/checkout@*"; internal dependencies must use their canonical package name with "workspace:*"',
       ],
     });
   });
@@ -242,11 +242,11 @@ describe('workspace graph validation', () => {
   it('rejects a forbidden dependency', () => {
     const projects = validWorkspaceProjects();
     findProject(projects, '@booking-engine/booking-core').dependencies.push(
-      '@booking-engine/payments',
+      '@booking-engine/checkout',
     );
 
     expect(validateWorkspaceGraph(projects)).toEqual([
-      '@booking-engine/booking-core declares forbidden workspace dependency @booking-engine/payments',
+      '@booking-engine/booking-core declares forbidden workspace dependency @booking-engine/checkout',
     ]);
   });
 
@@ -277,12 +277,12 @@ describe('workspace graph validation', () => {
 
   it('rejects an extra TypeScript reference', () => {
     const projects = validWorkspaceProjects();
-    findProject(projects, '@booking-engine/payments').references.push(
+    findProject(projects, '@booking-engine/checkout').references.push(
       '@booking-engine/booking-core',
     );
 
     expect(validateWorkspaceGraph(projects)).toEqual([
-      '@booking-engine/payments has an extra composite reference to @booking-engine/booking-core',
+      '@booking-engine/checkout has an extra composite reference to @booking-engine/booking-core',
     ]);
   });
 
@@ -290,12 +290,12 @@ describe('workspace graph validation', () => {
     const projects = validWorkspaceProjects();
     setRuntimeDependencies(projects, '@booking-engine/booking-core', {
       optionalDependencies: {
-        '@booking-engine/payments': 'workspace:*',
+        '@booking-engine/checkout': 'workspace:*',
       },
     });
 
     expect(validateWorkspaceGraph(projects)).toEqual([
-      '@booking-engine/booking-core declares forbidden workspace dependency @booking-engine/payments',
+      '@booking-engine/booking-core declares forbidden workspace dependency @booking-engine/checkout',
     ]);
   });
 
@@ -303,12 +303,12 @@ describe('workspace graph validation', () => {
     const projects = validWorkspaceProjects();
     setRuntimeDependencies(projects, '@booking-engine/booking-core', {
       peerDependencies: {
-        '@booking-engine/payments': 'workspace:*',
+        '@booking-engine/checkout': 'workspace:*',
       },
     });
 
     expect(validateWorkspaceGraph(projects)).toEqual([
-      '@booking-engine/booking-core declares forbidden workspace dependency @booking-engine/payments',
+      '@booking-engine/booking-core declares forbidden workspace dependency @booking-engine/checkout',
     ]);
   });
 
@@ -322,7 +322,7 @@ describe('workspace graph validation', () => {
         '@booking-engine/channel-ical': 'workspace:*',
       },
       peerDependencies: {
-        '@booking-engine/payments': 'workspace:*',
+        '@booking-engine/checkout': 'workspace:*',
       },
     });
 
@@ -333,7 +333,7 @@ describe('workspace graph validation', () => {
     const projects = validWorkspaceProjects();
     setRuntimeDependencies(projects, '@booking-engine/booking-core', {
       devDependencies: {
-        '@booking-engine/payments': 'workspace:*',
+        '@booking-engine/checkout': 'workspace:*',
       },
     });
 

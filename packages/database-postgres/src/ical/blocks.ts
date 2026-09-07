@@ -12,9 +12,9 @@ import type {
 
 import { PersistenceError, isPostgresError } from '../database/errors.js';
 import { lockProperty } from '../database/property-lock.js';
-import { requireProperty } from '../database/property-guards.js';
+import { requireProperty, requireNoAvailabilityConflict } from '../database/property-guards.js';
 import type { PostgresDatabasePort, PostgresTransactionPort } from '../database/postgres.js';
-import { qualifiedTable } from '../database/identifiers.js';
+import { qualifiedTable, validateRecordIdentifier } from '../database/identifiers.js';
 
 interface ICalBlockRow extends QueryResultRow {
   readonly organization_id: unknown;
@@ -30,7 +30,6 @@ interface ICalBlockRow extends QueryResultRow {
   readonly summary: unknown;
 }
 
-const IDENTIFIER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/u;
 const MAX_UID_LENGTH = 512;
 
 function hasUnsafeText(value: string, allowLineFeed: boolean): boolean {
@@ -40,26 +39,17 @@ function hasUnsafeText(value: string, allowLineFeed: boolean): boolean {
   });
 }
 
-function validateIdentifier(
-  value: unknown,
-  code: 'invalid_organization_id' | 'invalid_property_id' | 'invalid_availability_id',
-): asserts value is string {
-  if (typeof value !== 'string' || !IDENTIFIER_PATTERN.test(value)) {
-    throw new PersistenceError(code, `${code} must be a valid identifier.`);
-  }
-}
-
 function validateScope(scope: ICalScope): {
   readonly organizationId: string;
   readonly propertyId: string;
 } {
-  validateIdentifier(scope?.organizationId, 'invalid_organization_id');
-  validateIdentifier(scope?.propertyId, 'invalid_property_id');
+  validateRecordIdentifier(scope?.organizationId, 'invalid_organization_id');
+  validateRecordIdentifier(scope?.propertyId, 'invalid_property_id');
   return { organizationId: scope.organizationId, propertyId: scope.propertyId };
 }
 
 function validateSourceId(sourceId: string): string {
-  validateIdentifier(sourceId, 'invalid_availability_id');
+  validateRecordIdentifier(sourceId, 'invalid_availability_id');
   return sourceId;
 }
 
@@ -210,34 +200,6 @@ function mapRow(row: ICalBlockRow): ICalBlockRecord {
   });
 }
 
-async function requireNoAvailabilityConflict(
-  transaction: PostgresTransactionPort,
-  availabilityTable: string,
-  organizationId: string,
-  propertyId: string,
-  arrival: string,
-  departure: string,
-): Promise<void> {
-  const result = await transaction.query(
-    `
-      SELECT 1
-      FROM ${availabilityTable}
-      WHERE organization_id = $1
-        AND property_id = $2
-        AND status = 'active'
-        AND stay && daterange($3::date, $4::date, '[)')
-      LIMIT 1
-    `,
-    [organizationId, propertyId, arrival, departure],
-  );
-  if (result.rowCount !== 0) {
-    throw new PersistenceError(
-      'availability_conflict',
-      'iCalendar block overlaps an active availability record.',
-    );
-  }
-}
-
 export class PostgresICalBlockStore implements ICalBlockStore {
   private readonly blocksTable: string;
   private readonly availabilityTable: string;
@@ -329,6 +291,7 @@ export class PostgresICalBlockStore implements ICalBlockStore {
       next.propertyId,
       next.arrival,
       next.departure,
+      'iCalendar block overlaps an active availability record.',
     );
     const result = await transaction.query<ICalBlockRow>(
       `

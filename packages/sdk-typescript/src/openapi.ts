@@ -2,6 +2,7 @@ import {
   deepFreezeV1,
   PUBLIC_API_ERROR_CODES_V1,
   PUBLIC_API_ERROR_MESSAGE_BOUNDS_V1,
+  PUBLIC_BED_TYPES_V1,
   PUBLIC_BOOKING_REQUEST_STATUSES_V1,
   PUBLIC_BOOKING_TEXT_CONSTRAINTS_V1,
   PUBLIC_BOUNDED_TEXT_PATTERN_V1,
@@ -10,17 +11,19 @@ import {
   PUBLIC_MINOR_AMOUNT_MAXIMUM_V1,
   PUBLIC_NONBLANK_CONTROL_SAFE_TEXT_PATTERN_V1,
   PUBLIC_PROPERTY_RESPONSE_BOUNDS_V1,
+  PUBLIC_PROPERTY_TYPES_V1,
   PUBLIC_VALIDATION_CODES_V1,
   PUBLIC_VALIDATION_ISSUE_BOUNDS_V1,
   PUBLIC_VALIDATION_ISSUE_FIELD_PATTERN_V1,
-} from './contract-constraints-v1.js';
-import { PUBLIC_BOOKING_CONTRACT_MANIFEST_V1 } from './contract-manifest-v1.js';
-import type {
-  PublicApiVersionV1,
-  PublicApiErrorCodeV1,
-  PublicPropertyV1,
-  PublicRequestToBookV1,
-} from './public-contract-v1.js';
+} from './constraints.js';
+import { PUBLIC_BOOKING_CONTRACT_MANIFEST_V1 } from './manifest.js';
+import {
+  PUBLIC_BOOKING_LIMITS_V1,
+  type PublicApiVersionV1,
+  type PublicApiErrorCodeV1,
+  type PublicPropertyV1,
+  type PublicRequestToBookV1,
+} from './contract.js';
 
 export const PUBLIC_BOOKING_PATHS_V1 = Object.freeze({
   property: PUBLIC_BOOKING_CONTRACT_MANIFEST_V1.operations.property.path,
@@ -83,7 +86,7 @@ const propertySchema = {
     },
     propertyType: {
       type: 'string',
-      enum: ['apartment', 'bungalow', 'cabin', 'cottage', 'house', 'studio', 'villa'],
+      enum: PUBLIC_PROPERTY_TYPES_V1,
     },
     bedroomCount: {
       type: 'integer',
@@ -100,7 +103,7 @@ const propertySchema = {
         properties: {
           type: {
             type: 'string',
-            enum: ['bunk', 'double', 'king', 'queen', 'single', 'sofa-bed'],
+            enum: PUBLIC_BED_TYPES_V1,
           },
           quantity: {
             type: 'integer',
@@ -152,7 +155,7 @@ const availabilitySchema = {
     propertyId: identifierSchema,
     arrival: { type: 'string', format: 'date' },
     departure: { type: 'string', format: 'date' },
-    nights: { type: 'integer', minimum: 1, maximum: 3660 },
+    nights: { type: 'integer', minimum: 1, maximum: PUBLIC_BOOKING_LIMITS_V1.maximumStayNights },
     available: { type: 'boolean' },
   },
 } as const satisfies Record<string, unknown>;
@@ -165,11 +168,11 @@ const quoteSchema = {
     propertyId: identifierSchema,
     arrival: { type: 'string', format: 'date' },
     departure: { type: 'string', format: 'date' },
-    nights: { type: 'integer', minimum: 1, maximum: 3660 },
+    nights: { type: 'integer', minimum: 1, maximum: PUBLIC_BOOKING_LIMITS_V1.maximumStayNights },
     currency: { type: 'string', pattern: '^[A-Z]{3}$' },
     nightly: {
       type: 'array',
-      maxItems: 3660,
+      maxItems: PUBLIC_BOOKING_LIMITS_V1.maximumStayNights,
       items: {
         type: 'object',
         additionalProperties: false,
@@ -192,7 +195,11 @@ const quoteSchema = {
       maximum: PUBLIC_MINOR_AMOUNT_MAXIMUM_V1,
     },
     totalMinor: { type: 'integer', minimum: 0, maximum: 9007199254740991 },
-    minimumStayNights: { type: 'integer', minimum: 1, maximum: 3660 },
+    minimumStayNights: {
+      type: 'integer',
+      minimum: 1,
+      maximum: PUBLIC_BOOKING_LIMITS_V1.maximumStayNights,
+    },
   },
 } as const satisfies Record<string, unknown>;
 
@@ -203,13 +210,17 @@ const requestInputSchema = {
   properties: {
     arrival: { type: 'string', format: 'date' },
     departure: { type: 'string', format: 'date' },
-    guestCount: { type: 'integer', minimum: 1, maximum: 200 },
+    guestCount: {
+      type: 'integer',
+      minimum: 1,
+      maximum: PUBLIC_BOOKING_LIMITS_V1.maximumGuestCount,
+    },
     guestName: { type: 'string', ...PUBLIC_BOOKING_TEXT_CONSTRAINTS_V1.guestName },
     guestEmail: {
       type: 'string',
       format: 'email',
       minLength: 1,
-      maxLength: 254,
+      maxLength: PUBLIC_BOOKING_LIMITS_V1.maximumGuestEmailLength,
       pattern: PUBLIC_NONBLANK_CONTROL_SAFE_TEXT_PATTERN_V1,
     },
     message: { type: 'string', ...PUBLIC_BOOKING_TEXT_CONSTRAINTS_V1.message },
@@ -225,8 +236,12 @@ const requestResponseSchema = {
     propertyId: identifierSchema,
     arrival: { type: 'string', format: 'date' },
     departure: { type: 'string', format: 'date' },
-    nights: { type: 'integer', minimum: 1, maximum: 3660 },
-    guestCount: { type: 'integer', minimum: 1, maximum: 200 },
+    nights: { type: 'integer', minimum: 1, maximum: PUBLIC_BOOKING_LIMITS_V1.maximumStayNights },
+    guestCount: {
+      type: 'integer',
+      minimum: 1,
+      maximum: PUBLIC_BOOKING_LIMITS_V1.maximumGuestCount,
+    },
     status: { type: 'string', enum: PUBLIC_BOOKING_REQUEST_STATUSES_V1 },
     quote: { $ref: '#/components/schemas/PublicQuoteV1' },
     createdAt: { type: 'string', format: 'date-time' },
@@ -469,7 +484,11 @@ export const PUBLIC_BOOKING_OPENAPI_V1: PublicOpenApiDocumentV1 = deepFreezeV1({
         properties: {
           arrival: { type: 'string', format: 'date' },
           departure: { type: 'string', format: 'date' },
-          nights: { type: 'integer', minimum: 1, maximum: 3660 },
+          nights: {
+            type: 'integer',
+            minimum: 1,
+            maximum: PUBLIC_BOOKING_LIMITS_V1.maximumStayNights,
+          },
         },
       },
       PublicAvailabilityV1: availabilitySchema,

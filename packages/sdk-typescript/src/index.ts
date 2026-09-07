@@ -10,7 +10,7 @@ export {
   validatePublicQuoteRequestV1,
   validatePublicRequestToBookV1,
   validatePublicStayV1,
-} from './public-contract-v1.js';
+} from './contract.js';
 export type {
   PublicApiErrorCodeV1,
   PublicApiErrorResponseV1,
@@ -36,26 +36,23 @@ export type {
   PublicValidationCodeV1,
   PublicValidationIssueV1,
   PublicValidationResultV1,
-} from './public-contract-v1.js';
+} from './contract.js';
 
-export {
-  PUBLIC_BOOKING_CONTRACT_MANIFEST_V1,
-  publicBookingPathV1,
-} from './contract-manifest-v1.js';
-export type { PublicBookingOperationKeyV1 } from './contract-manifest-v1.js';
+export { PUBLIC_BOOKING_CONTRACT_MANIFEST_V1, publicBookingPathV1 } from './manifest.js';
+export type { PublicBookingOperationKeyV1 } from './manifest.js';
 
 export {
   PUBLIC_BOOKING_OPENAPI_PATH_V1,
   PUBLIC_BOOKING_OPENAPI_V1,
   PUBLIC_BOOKING_PATHS_V1,
-} from './openapi-v1.js';
-export type { PublicOpenApiDocumentV1 } from './openapi-v1.js';
+} from './openapi.js';
+export type { PublicOpenApiDocumentV1 } from './openapi.js';
 
-export { createBookingEngineClientV1 } from './client-v1.js';
+export { createBookingEngineClientV1 } from './client.js';
 export type {
   BookingEngineClientOptionsV1,
   BookingEngineClientV1,
   PublicFetchInitV1,
   PublicFetchResponseV1,
   PublicFetchV1,
-} from './client-v1.js';
+} from './client.js';

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { PaymentCheckoutService } from '@booking-engine/payments';
+import type { PaymentCheckoutService } from '@booking-engine/checkout';
 
 import { createPaymentHttpApi } from '../../../src/payment/http/api.js';
 

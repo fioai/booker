@@ -2,7 +2,7 @@ import type {
   PaymentCheckoutSession,
   PaymentCheckoutService,
   PaymentOrganizationScope,
-} from '@booking-engine/payments';
+} from '@booking-engine/checkout';
 
 const IDENTIFIER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/u;
 const WEBHOOK_PATH = '/v1/payments/stripe/webhook';

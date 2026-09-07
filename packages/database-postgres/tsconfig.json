@@ -7,7 +7,7 @@
   },
   "references": [
     { "path": "../booking-core" },
-    { "path": "../payments" },
+    { "path": "../checkout" },
     { "path": "../channel-ical" }
   ],
   "include": ["src/**/*.ts"]

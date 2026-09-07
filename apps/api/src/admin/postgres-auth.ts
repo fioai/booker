@@ -81,9 +81,7 @@ function qualifiedTable(database: PostgresDatabasePort, table: string): string {
 export function createPostgresAdminCredentialStore(
   database: PostgresDatabasePort,
 ): PostgresAdminCredentialStore {
-  return createPostgresOwnerCredentialRepository(
-    database,
-  ) as unknown as PostgresAdminCredentialStore;
+  return createPostgresOwnerCredentialRepository(database);
 }
 
 export function createPostgresAdminSessionStore(

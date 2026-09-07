@@ -3,7 +3,7 @@ export const WORKSPACE_DEPENDENCY_GRAPH = Object.freeze({
     '@booking-engine/booking-core',
     '@booking-engine/channel-ical',
     '@booking-engine/database-postgres',
-    '@booking-engine/payments',
+    '@booking-engine/checkout',
     '@booking-engine/sdk-typescript',
   ]),
   '@booking-engine/booking-core': Object.freeze([]),
@@ -11,10 +11,10 @@ export const WORKSPACE_DEPENDENCY_GRAPH = Object.freeze({
   '@booking-engine/database-postgres': Object.freeze([
     '@booking-engine/booking-core',
     '@booking-engine/channel-ical',
-    '@booking-engine/payments',
+    '@booking-engine/checkout',
   ]),
-  '@booking-engine/payments': Object.freeze([]),
-  '@booking-engine/payments-stripe': Object.freeze(['@booking-engine/payments']),
+  '@booking-engine/checkout': Object.freeze([]),
+  '@booking-engine/stripe': Object.freeze(['@booking-engine/checkout']),
   '@booking-engine/sdk-typescript': Object.freeze([]),
 });
 

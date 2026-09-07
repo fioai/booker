@@ -14,9 +14,13 @@ import {
 
 import { PersistenceError, isPostgresError } from '../database/errors.js';
 import { lockProperty } from '../database/property-lock.js';
-import { requireProperty, requireNoICalConflict } from '../database/property-guards.js';
+import {
+  requireProperty,
+  requireNoICalConflict,
+  requireNoAvailabilityConflict,
+} from '../database/property-guards.js';
 import type { PostgresDatabasePort, PostgresTransactionPort } from '../database/postgres.js';
-import { qualifiedTable } from '../database/identifiers.js';
+import { qualifiedTable, validateRecordIdentifier } from '../database/identifiers.js';
 
 export interface BookingRequestOrganizationScope {
   readonly organizationId: string;
@@ -141,8 +145,6 @@ interface HoldRow extends QueryResultRow {
   readonly expires_at: unknown;
 }
 
-const IDENTIFIER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]*$/u;
-const MAX_IDENTIFIER_LENGTH = 64;
 const MAX_IDEMPOTENCY_KEY_LENGTH = 128;
 const MAX_HOLD_DURATION_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_HOLD_DURATION_MS = 15 * 60 * 1000;
@@ -169,32 +171,18 @@ const REQUEST_COLUMNS = `
   hold_expires_at, decided_at
 `;
 
-function validateIdentifier(
-  value: unknown,
-  code: 'invalid_organization_id' | 'invalid_property_id' | 'invalid_booking_request_id',
-): asserts value is string {
-  if (
-    typeof value !== 'string' ||
-    value === '' ||
-    countUnicodeCodePoints(value, MAX_IDENTIFIER_LENGTH) > MAX_IDENTIFIER_LENGTH ||
-    !IDENTIFIER_PATTERN.test(value)
-  ) {
-    throw new PersistenceError(code, `${code} must be a valid identifier.`);
-  }
-}
-
 function validateScope(scope: BookingRequestOrganizationScope): string {
-  validateIdentifier(scope?.organizationId, 'invalid_organization_id');
+  validateRecordIdentifier(scope?.organizationId, 'invalid_organization_id');
   return scope.organizationId;
 }
 
 function validatePropertyId(propertyId: string): string {
-  validateIdentifier(propertyId, 'invalid_property_id');
+  validateRecordIdentifier(propertyId, 'invalid_property_id');
   return propertyId;
 }
 
 function validateRequestId(requestId: string): string {
-  validateIdentifier(requestId, 'invalid_booking_request_id');
+  validateRecordIdentifier(requestId, 'invalid_booking_request_id');
   return requestId;
 }
 
@@ -378,34 +366,6 @@ function matchesNormalizedRequest(
     matchesNormalizedClientRequest(record, propertyId, request) &&
     JSON.stringify(record.quote) === JSON.stringify(request.quote)
   );
-}
-
-async function requireNoAvailabilityConflict(
-  transaction: PostgresTransactionPort,
-  availabilityTable: string,
-  organizationId: string,
-  propertyId: string,
-  arrival: string,
-  departure: string,
-): Promise<void> {
-  const result = await transaction.query(
-    `
-      SELECT 1
-      FROM ${availabilityTable}
-      WHERE organization_id = $1
-        AND property_id = $2
-        AND status = 'active'
-        AND stay && daterange($3::date, $4::date, '[)')
-      LIMIT 1
-    `,
-    [organizationId, propertyId, arrival, departure],
-  );
-  if (result.rowCount !== 0) {
-    throw new PersistenceError(
-      'availability_conflict',
-      'stay overlaps an active availability record.',
-    );
-  }
 }
 
 async function insertOccupancy(

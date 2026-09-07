@@ -4,7 +4,7 @@ import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { sampleBungalowFixture } from '../../packages/booking-core/test/property/fixtures.js';
-import type { MoneyMinor, PaymentWebhookEvent } from '../../packages/payments/src/index.js';
+import type { MoneyMinor, PaymentWebhookEvent } from '../../packages/checkout/src/index.js';
 import {
   createPostgresOrganizationRepository,
   createPostgresBookingRequestRepository,

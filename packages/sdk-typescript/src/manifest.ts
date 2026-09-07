@@ -2,7 +2,7 @@ import {
   deepFreezeV1,
   PUBLIC_PROPERTY_RESPONSE_BOUNDS_V1,
   PUBLIC_VALIDATION_ISSUE_BOUNDS_V1,
-} from './contract-constraints-v1.js';
+} from './constraints.js';
 import type {
   PublicApiErrorCodeV1,
   PublicApiErrorResponseV1,
@@ -14,7 +14,7 @@ import type {
   PublicStayInputV1,
   PublicStayV1,
   PublicValidationIssueV1,
-} from './public-contract-v1.js';
+} from './contract.js';
 
 const operations = {
   property: {

@@ -16,7 +16,7 @@ import {
   type PaymentWebhookEvent,
   type PaymentWebhookProcessingResult,
   type PaymentWebhookProcessingStatus,
-} from '@booking-engine/payments';
+} from '@booking-engine/checkout';
 import { createQuoteSnapshot, type QuoteBreakdown } from '@booking-engine/booking-core';
 
 import { PersistenceError, isPostgresError } from '../database/errors.js';
@@ -32,7 +32,7 @@ export type {
   PaymentProviderRegistration,
   PaymentWebhookProcessingResult,
   PaymentWebhookProcessingStatus,
-} from '@booking-engine/payments';
+} from '@booking-engine/checkout';
 
 export interface PaymentCheckoutRepositoryOptions {
   readonly clock?: () => Date;

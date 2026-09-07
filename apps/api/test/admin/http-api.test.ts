@@ -355,6 +355,54 @@ describe('owner admin authentication, authorization, and tenant-safe HTTP behavi
     );
   });
 
+  it.each([
+    { method: 'POST', path: '/admin/logout', status: 204 },
+    {
+      method: 'DELETE',
+      path: `/admin/properties/${propertyId}/manual-blocks/${manualBlock.id}`,
+      status: 204,
+    },
+    ...['approve', 'reject', 'recheck'].map((action) => ({
+      method: 'POST',
+      path: `/admin/properties/${propertyId}/booking-requests/${request.id}/${action}`,
+      status: 200,
+    })),
+  ])('checks CSRF before validating action fields for $method $path', async (route) => {
+    const deps = dependencies(passwordHash);
+    const { api, cookies, csrf } = await authenticatedApi(deps);
+    const headers = { cookie: cookies, 'x-csrf-token': csrf };
+
+    await expect(
+      api.handle({
+        method: route.method,
+        path: route.path,
+        headers: { cookie: cookies },
+        body: { unexpected: true },
+      }),
+    ).resolves.toMatchObject({ status: 403, body: { error: { code: 'csrf_invalid' } } });
+    for (const body of [{ unexpected: true }, null]) {
+      await expect(
+        api.handle({ method: route.method, path: route.path, headers, body }),
+      ).resolves.toMatchObject({ status: 400, body: { error: { code: 'validation_failed' } } });
+    }
+    expect(deps.availability.releaseManualBlock).not.toHaveBeenCalled();
+    expect(deps.bookingRequests.approve).not.toHaveBeenCalled();
+    expect(deps.bookingRequests.reject).not.toHaveBeenCalled();
+    expect(deps.bookingRequests.recheckAvailability).not.toHaveBeenCalled();
+    await expect(
+      api.handle({ method: 'GET', path: '/admin/session', headers }),
+    ).resolves.toMatchObject({ status: 200 });
+
+    await expect(
+      api.handle({
+        method: route.method,
+        path: route.path,
+        headers: { cookie: cookies },
+        body: { csrfToken: csrf },
+      }),
+    ).resolves.toMatchObject({ status: route.status });
+  });
+
   it('requires an origin or referer when an exact admin origin is configured', async () => {
     const deps = dependencies(passwordHash);
     const api = createAdminHttpApi(deps, {

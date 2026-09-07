@@ -119,6 +119,25 @@ export const PUBLIC_BOOKING_REQUEST_STATUSES_V1 = Object.freeze([
   'expired',
 ] as const);
 
+export const PUBLIC_PROPERTY_TYPES_V1 = Object.freeze([
+  'apartment',
+  'bungalow',
+  'cabin',
+  'cottage',
+  'house',
+  'studio',
+  'villa',
+] as const);
+
+export const PUBLIC_BED_TYPES_V1 = Object.freeze([
+  'bunk',
+  'double',
+  'king',
+  'queen',
+  'single',
+  'sofa-bed',
+] as const);
+
 export const PUBLIC_VALIDATION_CODES_V1 = Object.freeze([
   'invalid_input',
   'missing_field',

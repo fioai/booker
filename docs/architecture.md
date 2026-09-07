@@ -13,13 +13,13 @@ package is planned for the first release.
 ## Dependency direction
 
 ```text
-payments-stripe -> payments
-database-postgres -> booking-core, payments, channel-ical
-apps/api -> booking-core, database-postgres, channel-ical, payments, sdk-typescript
+stripe -> checkout
+database-postgres -> booking-core, checkout, channel-ical
+apps/api -> booking-core, database-postgres, channel-ical, checkout, sdk-typescript
 ```
 
 The SDK has no workspace or runtime dependencies. `channel-ical`, `booking-core`, and
-`payments` do not depend on other workspace packages. Shared test helpers live with the tests.
+`checkout` do not depend on other workspace packages. Shared test helpers live with the tests.
 Composite TypeScript references mirror runtime workspace dependencies and are checked by
 `pnpm check:architecture`.
 
@@ -33,7 +33,8 @@ Composite TypeScript references mirror runtime workspace dependencies and are ch
   corruption classification, and canonical private projections. It never imports the SDK.
 - **`channel-ical`** owns iCalendar ports and adapter semantics. PostgreSQL implements its
   adapter but does not re-export its ports.
-- **`payments`** owns provider-neutral payment ports. Live Stripe activation is deferred.
+- **`checkout`** owns provider-neutral checkout flow, payment ports, and lifecycle contracts.
+- **`stripe`** implements the Stripe checkout and webhook adapter. Live Stripe activation is deferred.
 - **`apps/api`** owns transport, persistent admin-session authentication, error conversion,
   server-rendered admin presentation, and the sole outward SDK V1 mapper.
 - **`sdk-typescript`** owns the stable V1 wire types, OpenAPI metadata, strict response/error

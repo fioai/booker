@@ -14,17 +14,17 @@ import {
   type PublicRequestToBookInputV1,
   type PublicRequestToBookOptionsV1,
   type PublicRequestToBookV1,
-} from './public-contract-v1.js';
+} from './contract.js';
 import {
   PUBLIC_BOOKING_CONTRACT_MANIFEST_V1,
   publicBookingPathV1,
   type PublicBookingOperationKeyV1,
-} from './contract-manifest-v1.js';
+} from './manifest.js';
 import {
   PUBLIC_RESPONSE_DECODERS_V1,
   readPublicResponseV1,
   type PublicResponseDecoderContextV1,
-} from './response-decoder-v1.js';
+} from './decoder.js';
 
 export interface PublicFetchResponseV1 {
   readonly ok: boolean;

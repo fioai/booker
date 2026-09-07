@@ -26,7 +26,7 @@ export {
   type OwnerCredentialRecord,
   type OwnerCredentialRepository,
   type OwnerRole,
-} from './owner/auth-repository.js';
+} from './owner/auth.js';
 export {
   createPostgresAvailabilityRepository,
   PostgresAvailabilityRepository,
@@ -56,7 +56,7 @@ export {
   type BookingRequestRepository,
   type BookingRequestRepositoryOptions,
   type BookingRequestSubmitOptions,
-} from './booking/request-repository.js';
+} from './booking/requests.js';
 export {
   createPostgresBookingOutboxRepository,
   OutboxDeliveryError,
@@ -69,8 +69,8 @@ export {
   type BookingOutboxRepository,
   type BookingOutboxStatus,
   type OutboxDeliveryErrorCode,
-} from './booking/outbox-repository.js';
-export { createPostgresICalBlockStore, PostgresICalBlockStore } from './ical/block-repository.js';
+} from './booking/outbox.js';
+export { createPostgresICalBlockStore, PostgresICalBlockStore } from './ical/blocks.js';
 export {
   createPostgresPaymentCheckoutRepository,
   PostgresPaymentCheckoutRepository,
@@ -82,4 +82,4 @@ export {
   type PaymentProviderRegistration,
   type PaymentWebhookProcessingResult,
   type PaymentWebhookProcessingStatus,
-} from './payment/checkout-repository.js';
+} from './payment/checkout.js';

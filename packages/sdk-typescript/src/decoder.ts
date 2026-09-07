@@ -3,19 +3,21 @@ import {
   countUnicodeCodePointsV1,
   PUBLIC_API_ERROR_CODES_V1,
   PUBLIC_API_ERROR_MESSAGE_BOUNDS_V1,
+  PUBLIC_BED_TYPES_V1,
   PUBLIC_BOUNDED_TEXT_PATTERN_V1,
   PUBLIC_BOOKING_REQUEST_STATUSES_V1,
   PUBLIC_IDENTIFIER_PATTERN_V1,
   PUBLIC_MINOR_AMOUNT_MAXIMUM_V1,
   PUBLIC_PROPERTY_RESPONSE_BOUNDS_V1,
+  PUBLIC_PROPERTY_TYPES_V1,
   PUBLIC_VALIDATION_CODES_V1,
   PUBLIC_VALIDATION_ISSUE_BOUNDS_V1,
   PUBLIC_VALIDATION_ISSUE_FIELD_PATTERN_V1,
-} from './contract-constraints-v1.js';
+} from './constraints.js';
 import {
   PUBLIC_BOOKING_CONTRACT_MANIFEST_V1,
   type PublicBookingOperationKeyV1,
-} from './contract-manifest-v1.js';
+} from './manifest.js';
 import {
   BookingEngineApiErrorV1,
   PUBLIC_BOOKING_LIMITS_V1,
@@ -26,7 +28,7 @@ import {
   type PublicQuoteV1,
   type PublicRequestToBookV1,
   type PublicValidationIssueV1,
-} from './public-contract-v1.js';
+} from './contract.js';
 
 interface PublicJsonResponseV1 {
   readonly ok: boolean;
@@ -182,18 +184,6 @@ function isPublicStayFields(value: Record<string, unknown>): boolean {
   });
   return interval.ok && value['nights'] === interval.value.nights;
 }
-
-const PUBLIC_PROPERTY_TYPES_V1 = [
-  'apartment',
-  'bungalow',
-  'cabin',
-  'cottage',
-  'house',
-  'studio',
-  'villa',
-] as const;
-
-const PUBLIC_BED_TYPES_V1 = ['bunk', 'double', 'king', 'queen', 'single', 'sofa-bed'] as const;
 
 function isPublicPropertyType(value: unknown): value is PublicPropertyV1['propertyType'] {
   return (

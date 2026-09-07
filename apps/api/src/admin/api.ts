@@ -121,6 +121,27 @@ export function createAdminHttpApi(
     return requireRecord(request.body);
   }
 
+  async function requireCsrfWithoutBodyFields(
+    request: AdminHttpRequest,
+    session: AdminSession,
+    cookies: ParsedCookies,
+  ): Promise<void> {
+    if (request.body !== undefined) {
+      const body = await requireCsrfThenRecord(request, session, cookies);
+      requireNoBodyFields(bodyWithoutCsrf(body));
+      return;
+    }
+    await requireCsrf(
+      request,
+      session,
+      sessions,
+      cookies[SESSION_COOKIE],
+      cookies,
+      undefined,
+      expectedOrigin,
+    );
+  }
+
   async function handleLogin(request: AdminHttpRequest): Promise<AdminHttpResponse> {
     if (request.method === 'GET') {
       const csrf = newCsrfToken();
@@ -187,20 +208,7 @@ export function createAdminHttpApi(
           if (method !== 'POST') {
             methodNotAllowed();
           }
-          if (request.body !== undefined) {
-            const body = await requireCsrfThenRecord(normalizedRequest, session, cookies);
-            requireNoBodyFields(bodyWithoutCsrf(body));
-          } else {
-            await requireCsrf(
-              normalizedRequest,
-              session,
-              sessions,
-              token,
-              cookies,
-              undefined,
-              expectedOrigin,
-            );
-          }
+          await requireCsrfWithoutBodyFields(normalizedRequest, session, cookies);
           await sessions.destroy(token);
           return response(204, undefined, {
             'set-cookie': [
@@ -370,23 +378,7 @@ export function createAdminHttpApi(
             methodNotAllowed();
           }
           requireMutation(session);
-          const body =
-            request.body === undefined
-              ? undefined
-              : await requireCsrfThenRecord(normalizedRequest, session, cookies);
-          if (body !== undefined) {
-            requireNoBodyFields(bodyWithoutCsrf(body));
-          } else {
-            await requireCsrf(
-              normalizedRequest,
-              session,
-              sessions,
-              token,
-              cookies,
-              undefined,
-              expectedOrigin,
-            );
-          }
+          await requireCsrfWithoutBodyFields(normalizedRequest, session, cookies);
           const released = await dependencies.availability.releaseManualBlock(
             scopeFor(session),
             property.id,
@@ -432,23 +424,7 @@ export function createAdminHttpApi(
             methodNotAllowed();
           }
           requireBookingMutation(session);
-          const body =
-            request.body === undefined
-              ? undefined
-              : await requireCsrfThenRecord(normalizedRequest, session, cookies);
-          if (body !== undefined) {
-            requireNoBodyFields(bodyWithoutCsrf(body));
-          } else {
-            await requireCsrf(
-              normalizedRequest,
-              session,
-              sessions,
-              token,
-              cookies,
-              undefined,
-              expectedOrigin,
-            );
-          }
+          await requireCsrfWithoutBodyFields(normalizedRequest, session, cookies);
           if (parsedRoute.action === 'recheck') {
             const result = await dependencies.bookingRequests.recheckAvailability(
               scopeFor(session),

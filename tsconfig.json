@@ -2,8 +2,8 @@
   "files": [],
   "references": [
     { "path": "./packages/booking-core" },
-    { "path": "./packages/payments" },
-    { "path": "./packages/payments-stripe" },
+    { "path": "./packages/checkout" },
+    { "path": "./packages/stripe" },
     { "path": "./packages/channel-ical" },
     { "path": "./packages/database-postgres" },
     { "path": "./packages/sdk-typescript" },

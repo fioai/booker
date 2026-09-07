@@ -9,7 +9,7 @@
     { "path": "../../packages/booking-core" },
     { "path": "../../packages/channel-ical" },
     { "path": "../../packages/database-postgres" },
-    { "path": "../../packages/payments" },
+    { "path": "../../packages/checkout" },
     { "path": "../../packages/sdk-typescript" }
   ],
   "include": ["src/**/*.ts"]

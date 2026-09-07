@@ -43,3 +43,29 @@ export async function requireNoICalConflict(
     throw new PersistenceError('availability_conflict', 'stay overlaps an active iCalendar block.');
   }
 }
+
+export async function requireNoAvailabilityConflict(
+  transaction: PostgresTransactionPort,
+  availabilityTable: string,
+  organizationId: string,
+  propertyId: string,
+  arrival: string,
+  departure: string,
+  message = 'stay overlaps an active availability record.',
+): Promise<void> {
+  const result = await transaction.query(
+    `
+      SELECT 1
+      FROM ${availabilityTable}
+      WHERE organization_id = $1
+        AND property_id = $2
+        AND status = 'active'
+        AND stay && daterange($3::date, $4::date, '[)')
+      LIMIT 1
+    `,
+    [organizationId, propertyId, arrival, departure],
+  );
+  if (result.rowCount !== 0) {
+    throw new PersistenceError('availability_conflict', message);
+  }
+}

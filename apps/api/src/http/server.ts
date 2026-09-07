@@ -4,7 +4,7 @@ import {
   PUBLIC_BOOKING_OPENAPI_PATH_V1,
   PUBLIC_BOOKING_OPENAPI_V1,
 } from '@booking-engine/sdk-typescript';
-import type { PaymentCheckoutService } from '@booking-engine/payments';
+import type { PaymentCheckoutService } from '@booking-engine/checkout';
 
 import { readJsonBody, readRawBody } from './body.js';
 import { defaultErrorBody, hostForUrl, writeAdminResponse, writeJson } from './response.js';

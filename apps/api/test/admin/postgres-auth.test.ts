@@ -39,10 +39,7 @@ describe('PostgreSQL-backed admin credentials and sessions', () => {
     const credentials = createPostgresAdminCredentialStore(database);
     const hash =
       'scrypt$16384$8$1$AQEBAQEBAQEBAQEBAQEBAQ$hxzWooh97pINo1zW2P6ijE93mcH5kQmXCl6nsvjxkpw';
-    const repository = credentials as unknown as {
-      create(input: typeof user & { readonly passwordHash: string }): Promise<unknown>;
-    };
-    await expect(repository.create({ ...user, passwordHash: hash })).resolves.toMatchObject({
+    await expect(credentials.create({ ...user, passwordHash: hash })).resolves.toMatchObject({
       organizationId: user.organizationId,
     });
     expect(transactionQuery).toHaveBeenCalledWith(
