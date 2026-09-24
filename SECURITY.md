@@ -4,7 +4,7 @@ Report suspected vulnerabilities through [GitHub Security Advisories for
 `fioai/booker`](https://github.com/fioai/booker/security/advisories/new). Please do not open a
 public issue for an undisclosed vulnerability.
 
-The `0.1.x` release line of `@booking-engine/sdk-typescript` is the only intended public package.
+The `0.1.x` release line of `@fiolabs/booking-engine` is the only intended public package.
 Version `0.1.0` is currently an unpublished release candidate. Other workspace packages and the
 self-hosted reference application are private implementation surfaces for this release.
 

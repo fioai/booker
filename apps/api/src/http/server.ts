@@ -1,9 +1,6 @@
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 
-import {
-  PUBLIC_BOOKING_OPENAPI_PATH_V1,
-  PUBLIC_BOOKING_OPENAPI_V1,
-} from '@booking-engine/sdk-typescript';
+import { PUBLIC_BOOKING_OPENAPI_PATH_V1, PUBLIC_BOOKING_OPENAPI_V1 } from '@fiolabs/booking-engine';
 import type { PaymentCheckoutService } from '@booking-engine/checkout';
 
 import { readJsonBody, readRawBody } from './body.js';

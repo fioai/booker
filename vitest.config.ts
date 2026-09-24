@@ -8,7 +8,7 @@ export default defineConfig({
       '@booking-engine/booking-core': fileURLToPath(
         new URL('./packages/booking-core/src/index.ts', import.meta.url),
       ),
-      '@booking-engine/sdk-typescript': fileURLToPath(
+      '@fiolabs/booking-engine': fileURLToPath(
         new URL('./packages/sdk-typescript/src/index.ts', import.meta.url),
       ),
       '@booking-engine/channel-ical': fileURLToPath(

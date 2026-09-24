@@ -3,15 +3,17 @@ import { randomUUID } from 'node:crypto';
 import type { BookingRequestCreateInput } from '@booking-engine/database-postgres';
 import type {
   PublicAvailabilityV1,
+  PublicAvailabilityMonthV1,
   PublicPropertyV1,
   PublicQuoteV1,
   PublicRequestToBookV1,
-} from '@booking-engine/sdk-typescript';
+} from '@fiolabs/booking-engine';
 import {
   PUBLIC_BOOKING_CONTRACT_MANIFEST_V1,
   validatePublicRequestToBookV1,
   validatePublicStayV1,
-} from '@booking-engine/sdk-typescript';
+  validatePublicAvailabilityMonthRequestV1,
+} from '@fiolabs/booking-engine';
 
 import { serializePublicProperty } from '../../property/configuration/mapper.js';
 import {
@@ -35,6 +37,7 @@ import {
 import { idempotencyKeyHeader, parsePublicBookingRoute } from './routes.js';
 import {
   serializePublicAvailability,
+  serializePublicAvailabilityMonth,
   serializePublicBookingRequest,
   serializePublicQuote,
 } from './serialization.js';
@@ -85,6 +88,29 @@ export function createPublicBookingApi(
       try {
         const available = await dependencies.availability.isAvailable(scope, id, stay.value);
         return serializePublicAvailability(id, stay.value, available);
+      } catch (error) {
+        throw mapPersistenceError(error);
+      }
+    },
+    async getAvailabilityMonth(scope, propertyId, input): Promise<PublicAvailabilityMonthV1> {
+      const id = requirePropertyId(propertyId);
+      const parsed = validatePublicAvailabilityMonthRequestV1(input);
+      if (!parsed.ok) throwValidation(parsed);
+      const month = parsed.value.month;
+      const year = Number(month.slice(0, 4));
+      const monthNumber = Number(month.slice(5));
+      const nextMonth =
+        monthNumber === 12
+          ? `${String(year + 1).padStart(4, '0')}-01`
+          : `${month.slice(0, 4)}-${String(monthNumber + 1).padStart(2, '0')}`;
+      const checkedAt = new Date().toISOString();
+      await ensureProperty(dependencies, scope, id);
+      try {
+        const days = await dependencies.availability.getNightlyAvailability(scope, id, {
+          arrival: `${month}-01`,
+          departure: `${nextMonth}-01`,
+        });
+        return serializePublicAvailabilityMonth(id, month, days, checkedAt);
       } catch (error) {
         throw mapPersistenceError(error);
       }
@@ -249,6 +275,14 @@ export function createPublicBookingHttpApi(
               arrival: route.url.searchParams.get('arrival') ?? undefined,
               departure: route.url.searchParams.get('departure') ?? undefined,
             }),
+          };
+        }
+        if (route.resource === 'availabilityMonth') {
+          const input = Object.fromEntries(route.url.searchParams);
+          if (route.url.searchParams.getAll('month').length > 1) input['month'] = '';
+          return {
+            status: 200,
+            body: await api.getAvailabilityMonth(scope, route.propertyId, input),
           };
         }
         if (route.resource === 'quote') {

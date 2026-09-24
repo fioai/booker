@@ -7,6 +7,9 @@ import type {
   PublicApiErrorCodeV1,
   PublicApiErrorResponseV1,
   PublicAvailabilityV1,
+  PublicAvailabilityMonthRequestV1,
+  PublicAvailabilityMonthV1,
+  PublicAvailabilityNightV1,
   PublicPropertyV1,
   PublicQuoteV1,
   PublicRequestToBookInputV1,
@@ -40,6 +43,18 @@ const operations = {
       500: ['internal_error'],
     } as const satisfies Readonly<Record<number, readonly PublicApiErrorCodeV1[]>>,
     responseSchema: 'PublicAvailabilityV1',
+  },
+  availabilityMonth: {
+    method: 'GET',
+    path: '/v1/properties/{propertyId}/availability/month',
+    operationId: 'getPublicAvailabilityMonthV1',
+    statuses: [200, 400, 404, 500],
+    errorCodesByStatus: {
+      400: ['validation_failed'],
+      404: ['property_not_found'],
+      500: ['internal_error'],
+    } as const satisfies Readonly<Record<number, readonly PublicApiErrorCodeV1[]>>,
+    responseSchema: 'PublicAvailabilityMonthV1',
   },
   quote: {
     method: 'POST',
@@ -115,6 +130,18 @@ const schemas = {
   PublicAvailabilityV1: {
     fields: ['propertyId', 'arrival', 'departure', 'nights', 'available'],
     required: ['propertyId', 'arrival', 'departure', 'nights', 'available'],
+  },
+  PublicAvailabilityMonthRequestV1: {
+    fields: ['month'],
+    required: ['month'],
+  },
+  PublicAvailabilityNightV1: {
+    fields: ['date', 'available'],
+    required: ['date', 'available'],
+  },
+  PublicAvailabilityMonthV1: {
+    fields: ['propertyId', 'month', 'days', 'checkedAt'],
+    required: ['propertyId', 'month', 'days', 'checkedAt'],
   },
   PublicQuoteV1: {
     fields: [
@@ -196,6 +223,24 @@ type AssertV1<Value extends true> = Value;
 
 /** These exported checks make a public type field change fail unless the manifest changes too. */
 export type PublicBookingManifestTypeChecksV1 = [
+  AssertV1<
+    EqualV1<
+      keyof PublicAvailabilityMonthRequestV1,
+      (typeof schemas.PublicAvailabilityMonthRequestV1.fields)[number]
+    >
+  >,
+  AssertV1<
+    EqualV1<
+      keyof PublicAvailabilityNightV1,
+      (typeof schemas.PublicAvailabilityNightV1.fields)[number]
+    >
+  >,
+  AssertV1<
+    EqualV1<
+      keyof PublicAvailabilityMonthV1,
+      (typeof schemas.PublicAvailabilityMonthV1.fields)[number]
+    >
+  >,
   AssertV1<EqualV1<keyof PublicPropertyV1, (typeof schemas.PublicPropertyV1.fields)[number]>>,
   AssertV1<EqualV1<keyof PublicStayInputV1, (typeof schemas.PublicStayInputV1.fields)[number]>>,
   AssertV1<EqualV1<keyof PublicStayV1, (typeof schemas.PublicStayV1.fields)[number]>>,

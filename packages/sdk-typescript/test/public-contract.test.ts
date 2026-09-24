@@ -83,6 +83,9 @@ const operationErrorCases = [
   { operation: 'availability', status: 400, codes: ['validation_failed'] },
   { operation: 'availability', status: 404, codes: ['property_not_found'] },
   { operation: 'availability', status: 500, codes: ['internal_error'] },
+  { operation: 'availabilityMonth', status: 400, codes: ['validation_failed'] },
+  { operation: 'availabilityMonth', status: 404, codes: ['property_not_found'] },
+  { operation: 'availabilityMonth', status: 500, codes: ['internal_error'] },
   { operation: 'quote', status: 400, codes: ['validation_failed'] },
   {
     operation: 'quote',
@@ -115,6 +118,8 @@ function requestForOperation(
       return client.getProperty(property.id);
     case 'availability':
       return client.getAvailability(property.id, requestedStay);
+    case 'availabilityMonth':
+      return client.getAvailabilityMonth(property.id, { month: '2026-08' });
     case 'quote':
       return client.getQuote(property.id, requestedStay);
     case 'requestToBook':
@@ -159,6 +164,7 @@ describe('versioned public booking contract', () => {
     expect(operationEntries.map(([key]) => key)).toEqual([
       'property',
       'availability',
+      'availabilityMonth',
       'quote',
       'requestToBook',
     ]);
@@ -279,12 +285,13 @@ describe('versioned public booking contract', () => {
     }
   });
 
-  it('publishes the four v1 REST boundaries without private or tenant fields', () => {
+  it('publishes the v1 REST boundaries without private or tenant fields', () => {
     expect(PUBLIC_BOOKING_OPENAPI_V1.openapi).toBe('3.0.3');
     expect(PUBLIC_BOOKING_OPENAPI_V1.info.version).toBe('1.0.0');
     expect(Object.keys(PUBLIC_BOOKING_OPENAPI_V1.paths)).toEqual([
       PUBLIC_BOOKING_PATHS_V1.property,
       PUBLIC_BOOKING_PATHS_V1.availability,
+      PUBLIC_BOOKING_PATHS_V1.availabilityMonth,
       PUBLIC_BOOKING_PATHS_V1.quote,
       PUBLIC_BOOKING_PATHS_V1.requestToBook,
     ]);

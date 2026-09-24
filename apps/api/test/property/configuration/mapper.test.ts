@@ -9,7 +9,7 @@ import {
 import {
   createBookingEngineClientV1,
   type PublicPropertyConfigurationV1,
-} from '@booking-engine/sdk-typescript';
+} from '@fiolabs/booking-engine';
 
 import { serializePublicProperty } from '../../../src/index.js';
 import { sampleBungalowFixture } from '../../../../../packages/booking-core/test/property/fixtures.js';

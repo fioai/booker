@@ -32,7 +32,7 @@ occupancy. This is a property request-to-book workflow, with your own frontend a
 ## A small client surface
 
 ```ts
-import { createBookingEngineClientV1 } from '@booking-engine/sdk-typescript';
+import { createBookingEngineClientV1 } from '@fiolabs/booking-engine';
 
 const client = createBookingEngineClientV1({
   baseUrl: 'http://127.0.0.1:13000',

@@ -3,9 +3,11 @@ import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
+import { parseICalCalendar, reconcileICalFeed } from '../../packages/channel-ical/src/index.js';
 import type { PropertyConfigurationInput } from '../../packages/booking-core/src/index.js';
 import {
   createPostgresAvailabilityRepository,
+  createPostgresICalBlockStore,
   createPostgresOrganizationRepository,
   createPostgresDatabase,
   createPostgresPropertyRepository,
@@ -94,6 +96,101 @@ describe('PostgreSQL availability, rates, and atomic occupancy', () => {
     await database?.close();
     await pool?.query(`DROP SCHEMA IF EXISTS "${integrationSchema}" CASCADE`);
     await pool?.end();
+  });
+
+  it('reads all inventory sources once per month with exclusive departures and tenant isolation', async () => {
+    const scope = { organizationId: organizationAId };
+    const otherScope = { organizationId: organizationBId };
+    await properties.create(otherScope, makeProperty(propertyId));
+    await availability.createManualBlock(scope, propertyId, {
+      id: 'manual-month',
+      arrival: '2028-01-30',
+      departure: '2028-02-03',
+      reason: 'Private maintenance reason',
+    });
+    await availability.createHold(scope, propertyId, {
+      id: 'hold-month',
+      arrival: '2028-02-05',
+      departure: '2028-02-07',
+      expiresAt: '2020-01-01T00:00:00Z',
+    });
+    await availability.createConfirmedOccupancy(scope, propertyId, {
+      id: 'occupancy-month',
+      arrival: '2028-02-28',
+      departure: '2028-03-02',
+    });
+    await availability.createManualBlock(scope, propertyId, {
+      id: 'released-month',
+      arrival: '2028-02-15',
+      departure: '2028-02-16',
+      reason: 'Released',
+    });
+    await availability.releaseManualBlock(scope, propertyId, 'released-month');
+    await availability.createManualBlock(otherScope, propertyId, {
+      id: 'other-tenant',
+      arrival: '2028-02-20',
+      departure: '2028-02-21',
+      reason: 'Another tenant',
+    });
+    const sourceDatabase = database as PostgresDatabasePort;
+    const icalStore = createPostgresICalBlockStore(sourceDatabase);
+    const feed = parseICalCalendar(
+      'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:imported-stay\r\nDTSTART;VALUE=DATE:20280210\r\nDTEND;VALUE=DATE:20280212\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n',
+    );
+    await reconcileICalFeed({ ...scope, propertyId }, 'airbnb', feed.events, icalStore);
+    let inventoryReads = 0;
+    const counted = createPostgresAvailabilityRepository({
+      ...sourceDatabase,
+      query: async (sql, values) => {
+        inventoryReads += 1;
+        return sourceDatabase.query(sql, values);
+      },
+      withTransaction: sourceDatabase.withTransaction.bind(sourceDatabase),
+      close: sourceDatabase.close.bind(sourceDatabase),
+    });
+    const interval = { arrival: '2028-02-01', departure: '2028-03-01' };
+    const days = await counted.getNightlyAvailability(scope, propertyId, interval);
+    expect(inventoryReads).toBe(1);
+    expect(days).toHaveLength(29);
+    expect(days.filter((day) => !day.available).map((day) => day.date)).toEqual([
+      '2028-02-01',
+      '2028-02-02',
+      '2028-02-05',
+      '2028-02-06',
+      '2028-02-10',
+      '2028-02-11',
+      '2028-02-28',
+      '2028-02-29',
+    ]);
+    for (const day of days) {
+      const next = new Date(day.date + 'T12:00:00Z');
+      next.setUTCDate(next.getUTCDate() + 1);
+      expect(day.available).toBe(
+        await availability.isAvailable(scope, propertyId, {
+          arrival: day.date,
+          departure: next.toISOString().slice(0, 10),
+        }),
+      );
+      expect(Object.keys(day)).toEqual(['date', 'available']);
+    }
+    await availability.releaseExpiredHolds(scope, '2028-02-01T00:00:00Z');
+    await icalStore.release({ ...scope, propertyId }, 'airbnb', 'imported-stay');
+    const refreshed = await availability.getNightlyAvailability(scope, propertyId, interval);
+    expect(refreshed.filter((day) => !day.available).map((day) => day.date)).toEqual([
+      '2028-02-01',
+      '2028-02-02',
+      '2028-02-28',
+      '2028-02-29',
+    ]);
+    await expect(
+      availability.getNightlyAvailability(scope, 'missing', interval),
+    ).rejects.toMatchObject({ code: 'property_not_found' });
+    await expect(
+      availability.getNightlyAvailability(scope, propertyId, {
+        arrival: '2028-02-01',
+        departure: '2028-03-04',
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_stay' });
   });
 
   it('persists tenant-scoped integer rates and returns a minor-unit quote', async () => {

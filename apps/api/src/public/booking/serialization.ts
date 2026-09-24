@@ -2,10 +2,11 @@ import type { QuoteBreakdown } from '@booking-engine/booking-core';
 import type { BookingRequestRecord } from '@booking-engine/database-postgres';
 import type {
   PublicAvailabilityV1,
+  PublicAvailabilityMonthV1,
   PublicQuoteV1,
   PublicRequestToBookV1,
   PublicStayV1,
-} from '@booking-engine/sdk-typescript';
+} from '@fiolabs/booking-engine';
 
 export function serializePublicAvailability(
   propertyId: string,
@@ -18,6 +19,22 @@ export function serializePublicAvailability(
     departure: stay.departure,
     nights: stay.nights,
     available,
+  });
+}
+
+export function serializePublicAvailabilityMonth(
+  propertyId: string,
+  month: string,
+  days: PublicAvailabilityMonthV1['days'],
+  checkedAt: string,
+): PublicAvailabilityMonthV1 {
+  return Object.freeze({
+    propertyId,
+    month,
+    days: Object.freeze(
+      days.map((day) => Object.freeze({ date: day.date, available: day.available })),
+    ),
+    checkedAt,
   });
 }
 

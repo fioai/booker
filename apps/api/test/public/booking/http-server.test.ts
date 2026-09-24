@@ -6,7 +6,7 @@ import {
   type QuoteBreakdown,
 } from '@booking-engine/booking-core';
 import type { BookingRequestRecord } from '@booking-engine/database-postgres';
-import type { PublicRequestToBookInputV1 } from '@booking-engine/sdk-typescript';
+import type { PublicRequestToBookInputV1 } from '@fiolabs/booking-engine';
 
 import { createApiHttpServer, type PublicBookingRequestRepository } from '../../../src/index.js';
 import { sampleBungalowFixture } from '../../../../../packages/booking-core/test/property/fixtures.js';
@@ -80,7 +80,15 @@ function dependencies() {
 
   return {
     properties: { findPublicById: vi.fn(async () => publicProperty) },
-    availability: { isAvailable: vi.fn(async () => true) },
+    availability: {
+      isAvailable: vi.fn(async () => true),
+      getNightlyAvailability: vi.fn(async () =>
+        Array.from({ length: 31 }, (_, index) => ({
+          date: `2026-08-${String(index + 1).padStart(2, '0')}`,
+          available: index !== 10,
+        })),
+      ),
+    },
     rates: { quote: vi.fn(async () => quote) },
     bookingRequests,
   };
@@ -115,9 +123,30 @@ describe('public booking v1 real HTTP server', () => {
     expect(Object.keys(openApi.paths)).toEqual([
       '/v1/properties/{propertyId}',
       '/v1/properties/{propertyId}/availability',
+      '/v1/properties/{propertyId}/availability/month',
       '/v1/properties/{propertyId}/quote',
       '/v1/properties/{propertyId}/request-to-book',
     ]);
+
+    const monthResponse = await fetch(
+      `${baseUrl}/v1/properties/${propertyId}/availability/month?month=2026-08`,
+    );
+    expect(monthResponse.status).toBe(200);
+    expect(await json(monthResponse)).toMatchObject({
+      propertyId,
+      month: '2026-08',
+      days: expect.arrayContaining([{ date: '2026-08-11', available: false }]),
+    });
+    for (const query of [
+      '',
+      '?month=2026-13',
+      '?month=2026-08&month=2026-09',
+      '?month=2026-08&private=true',
+    ]) {
+      expect(
+        (await fetch(`${baseUrl}/v1/properties/${propertyId}/availability/month${query}`)).status,
+      ).toBe(400);
+    }
 
     const propertyResponse = await fetch(`${baseUrl}/v1/properties/${propertyId}`);
     expect(propertyResponse.status).toBe(200);

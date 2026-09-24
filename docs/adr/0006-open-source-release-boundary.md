@@ -9,7 +9,7 @@ The first open-source release keeps the deployment as one modular monolith. We w
 introduce a service split or a new generic `common`, `kernel`, or `booking-application`
 package.
 
-`@booking-engine/sdk-typescript` is the only intended first-release public package. Version `0.1.0`
+`@fiolabs/booking-engine` is the only intended first-release public package. Version `0.1.0`
 is an unpublished release candidate; publish it only after the annotated `v0.1.0` tag and registry
 publication with provenance. The package has no workspace dependencies. `booking-core`,
 `database-postgres`, `checkout`, `stripe`, and `channel-ical` remain private

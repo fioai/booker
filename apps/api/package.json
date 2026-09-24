@@ -8,6 +8,6 @@
     "@booking-engine/channel-ical": "workspace:*",
     "@booking-engine/database-postgres": "workspace:*",
     "@booking-engine/checkout": "workspace:*",
-    "@booking-engine/sdk-typescript": "workspace:*"
+    "@fiolabs/booking-engine": "workspace:*"
   }
 }

@@ -69,13 +69,7 @@ try {
   }
 
   await runPackageManager(
-    [
-      'pack',
-      '--filter',
-      '@booking-engine/sdk-typescript',
-      '--pack-destination',
-      temporaryDirectory,
-    ],
+    ['pack', '--filter', '@fiolabs/booking-engine', '--pack-destination', temporaryDirectory],
     { cwd: root },
   );
   const packedFiles = (await readdir(temporaryDirectory)).filter((name) => name.endsWith('.tgz'));
@@ -131,7 +125,7 @@ try {
   await runPackageManager(['install', '--ignore-scripts', tarball], { cwd: temporaryDirectory });
   const installedManifest = JSON.parse(
     await readFile(
-      join(temporaryDirectory, 'node_modules/@booking-engine/sdk-typescript/package.json'),
+      join(temporaryDirectory, 'node_modules/@fiolabs/booking-engine/package.json'),
       'utf8',
     ),
   );
@@ -151,15 +145,15 @@ try {
       '  type PublicRequestToBookInputV1,',
       '  type PublicRequestToBookOptionsV1,',
       '  type PublicRequestToBookV1,',
-      "} from '@booking-engine/sdk-typescript';",
+      "} from '@fiolabs/booking-engine';",
       '// @ts-expect-error Manifest proof types are internal.',
-      "import type { PublicBookingManifestTypeChecksV1 } from '@booking-engine/sdk-typescript';",
+      "import type { PublicBookingManifestTypeChecksV1 } from '@fiolabs/booking-engine';",
       '// @ts-expect-error OpenAPI proof types are internal.',
-      "import type { PublicOpenApiContractTypesV1 } from '@booking-engine/sdk-typescript';",
+      "import type { PublicOpenApiContractTypesV1 } from '@fiolabs/booking-engine';",
       '// @ts-expect-error The compatibility input alias is not public.',
-      "import type { PublicBookingRequestInputV1 } from '@booking-engine/sdk-typescript';",
+      "import type { PublicBookingRequestInputV1 } from '@fiolabs/booking-engine';",
       '// @ts-expect-error The compatibility response alias is not public.',
-      "import type { PublicBookingRequestV1 } from '@booking-engine/sdk-typescript';",
+      "import type { PublicBookingRequestV1 } from '@fiolabs/booking-engine';",
       '',
       "const client: BookingEngineClientV1 = createBookingEngineClientV1({ baseUrl: 'https://booking.example.test' });",
       'declare const input: PublicRequestToBookInputV1;',
@@ -197,7 +191,7 @@ try {
   );
   await writeFile(
     join(temporaryDirectory, 'smoke.mjs'),
-    "import { createBookingEngineClientV1, BookingEngineApiErrorV1 } from '@booking-engine/sdk-typescript';\nif (typeof createBookingEngineClientV1 !== 'function' || typeof BookingEngineApiErrorV1 !== 'function') throw new Error('V1 exports are missing');\nconst client = createBookingEngineClientV1({ baseUrl: 'https://booking.example.test' });\nif (client.apiVersion !== 'v1' || typeof client.requestToBook !== 'function') throw new Error('V1 client path is missing');\n",
+    "import { createBookingEngineClientV1, BookingEngineApiErrorV1 } from '@fiolabs/booking-engine';\nif (typeof createBookingEngineClientV1 !== 'function' || typeof BookingEngineApiErrorV1 !== 'function') throw new Error('V1 exports are missing');\nconst client = createBookingEngineClientV1({ baseUrl: 'https://booking.example.test' });\nif (client.apiVersion !== 'v1' || typeof client.requestToBook !== 'function') throw new Error('V1 client path is missing');\n",
   );
   await exec(process.execPath, ['smoke.mjs'], { cwd: temporaryDirectory });
   process.stdout.write('SDK package consumer smoke passed.\n');

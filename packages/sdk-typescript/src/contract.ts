@@ -118,6 +118,40 @@ export interface PublicAvailabilityV1 extends PublicStayV1 {
   readonly available: boolean;
 }
 
+/** One flag per property-local night; departure dates are exclusive. */
+export interface PublicAvailabilityNightV1 {
+  readonly date: string;
+  readonly available: boolean;
+}
+
+export interface PublicAvailabilityMonthRequestV1 {
+  readonly month: string;
+}
+
+export interface PublicAvailabilityMonthV1 {
+  readonly propertyId: string;
+  readonly month: string;
+  readonly days: readonly PublicAvailabilityNightV1[];
+  readonly checkedAt: string;
+}
+
+export const PUBLIC_CALENDAR_MONTH_PATTERN_V1 = '^(?!0000|9999)[0-9]{4}-(0[1-9]|1[0-2])$';
+
+export function validatePublicAvailabilityMonthRequestV1(
+  input: unknown,
+): PublicValidationResultV1<PublicAvailabilityMonthRequestV1> {
+  const validated = validateRecord(input, ['month']);
+  if ('errors' in validated) return { ok: false, errors: validated.errors };
+  const month = validated.record['month'];
+  if (typeof month !== 'string' || !new RegExp(PUBLIC_CALENDAR_MONTH_PATTERN_V1, 'u').test(month)) {
+    return {
+      ok: false,
+      errors: [issue('month', 'invalid_date', 'month must be YYYY-MM in years 0001 through 9998.')],
+    };
+  }
+  return { ok: true, value: { month } };
+}
+
 export type PublicQuoteNightSourceV1 = 'base' | 'seasonal_override';
 
 export interface PublicQuoteNightV1 {

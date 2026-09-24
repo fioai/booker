@@ -1,7 +1,7 @@
 # Support
 
 Booking Engine is a pre-release project. The runtime is not recommended for production traffic.
-`@booking-engine/sdk-typescript` version `0.1.0` is an unpublished release candidate; the support
+`@fiolabs/booking-engine` version `0.1.0` is an unpublished release candidate; the support
 scope below does not mean that this version is available from a registry.
 
 ## Support scope

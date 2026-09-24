@@ -22,6 +22,8 @@ import {
   BookingEngineApiErrorV1,
   PUBLIC_BOOKING_LIMITS_V1,
   validatePublicStayV1,
+  validatePublicAvailabilityMonthRequestV1,
+  type PublicAvailabilityMonthV1,
   type PublicApiErrorV1,
   type PublicAvailabilityV1,
   type PublicPropertyV1,
@@ -41,6 +43,7 @@ type PublicResponseGuardV1<T> = (value: unknown) => value is T;
 export interface PublicResponseDecoderContextV1 {
   readonly operation: PublicBookingOperationKeyV1;
   readonly propertyId: string;
+  readonly month?: string;
   readonly arrival?: string;
   readonly departure?: string;
   readonly guestCount?: number;
@@ -271,6 +274,28 @@ function isPublicAvailability(value: unknown): value is PublicAvailabilityV1 {
   );
 }
 
+function isPublicAvailabilityMonth(value: unknown): value is PublicAvailabilityMonthV1 {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ['propertyId', 'month', 'days', 'checkedAt']) ||
+    !isIdentifier(value['propertyId']) ||
+    !isIsoTimestamp(value['checkedAt'])
+  )
+    return false;
+  const parsed = validatePublicAvailabilityMonthRequestV1({ month: value['month'] });
+  if (!parsed.ok || !Array.isArray(value['days'])) return false;
+  const month = parsed.value.month;
+  if (value['days'].length !== daysInMonth(Number(month.slice(0, 4)), Number(month.slice(5))))
+    return false;
+  return value['days'].every(
+    (day: unknown, index: number) =>
+      isRecord(day) &&
+      hasExactKeys(day, ['date', 'available']) &&
+      day['date'] === `${month}-${String(index + 1).padStart(2, '0')}` &&
+      typeof day['available'] === 'boolean',
+  );
+}
+
 function isPublicQuote(value: unknown): value is PublicQuoteV1 {
   if (
     !isRecord(value) ||
@@ -427,6 +452,9 @@ function matchesPublicResponseContext(
   if (context.operation === 'property') {
     return true;
   }
+  if (context.operation === 'availabilityMonth') {
+    return context.month !== undefined && value['month'] === context.month;
+  }
   if (
     context.arrival === undefined ||
     context.departure === undefined ||
@@ -532,6 +560,7 @@ function decodeError(
 export const PUBLIC_RESPONSE_DECODERS_V1 = Object.freeze({
   property: isPublicProperty,
   availability: isPublicAvailability,
+  availabilityMonth: isPublicAvailabilityMonth,
   quote: isPublicQuote,
   requestToBook: isPublicRequestToBook,
 });

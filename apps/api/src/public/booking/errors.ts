@@ -2,11 +2,11 @@ import type {
   PublicApiErrorResponseV1,
   PublicValidationCodeV1,
   PublicValidationIssueV1,
-} from '@booking-engine/sdk-typescript';
+} from '@fiolabs/booking-engine';
 import {
   validatePublicIdempotencyKeyV1,
   validatePublicPropertyIdV1,
-} from '@booking-engine/sdk-typescript';
+} from '@fiolabs/booking-engine';
 
 import { PublicBookingApiError, type PublicHttpResponse } from './contracts.js';
 

@@ -32,7 +32,7 @@ async function checkDatabaseBoundary() {
   const sourceDirectory = join(root, 'packages/database-postgres/src');
   for (const file of await filesUnder(sourceDirectory)) {
     const source = await readFile(file, 'utf8');
-    if (source.includes('@booking-engine/sdk-typescript')) {
+    if (source.includes('@fiolabs/booking-engine')) {
       violations.push(`database source imports the SDK: ${relative(root, file)}`);
     }
   }

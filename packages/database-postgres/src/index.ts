@@ -34,6 +34,7 @@ export {
   type AvailabilityRecordKind,
   type AvailabilityRecordStatus,
   type AvailabilityRecord,
+  type NightlyAvailability,
   type AvailabilityRepository,
   type ConfirmedOccupancyInput,
   type HoldInput,

@@ -5,7 +5,7 @@ import {
   type QuoteBreakdown,
   type PropertyConfiguration,
 } from '@booking-engine/booking-core';
-import type { PublicQuoteV1, PublicRequestToBookInputV1 } from '@booking-engine/sdk-typescript';
+import type { PublicQuoteV1, PublicRequestToBookInputV1 } from '@fiolabs/booking-engine';
 import type { BookingRequestRecord } from '@booking-engine/database-postgres';
 
 import {
@@ -83,13 +83,56 @@ function dependencies() {
   };
   return {
     properties: { findPublicById },
-    availability: { isAvailable: vi.fn(async () => true) },
+    availability: {
+      isAvailable: vi.fn(async () => true),
+      getNightlyAvailability: vi.fn(async () =>
+        Array.from({ length: 31 }, (_, index) => ({
+          date: `2026-08-${String(index + 1).padStart(2, '0')}`,
+          available: index !== 10,
+        })),
+      ),
+    },
     rates: { quote: vi.fn(async () => quote) },
     bookingRequests,
   };
 }
 
 describe('public booking API v1', () => {
+  it('reads a full month once with exclusive next-month boundaries and public-only serialization', async () => {
+    const deps = dependencies();
+    const api = createPublicBookingApi(deps);
+    const result = await api.getAvailabilityMonth(scope, propertyId, { month: '2026-08' });
+    expect(deps.availability.getNightlyAvailability).toHaveBeenCalledExactlyOnceWith(
+      scope,
+      propertyId,
+      { arrival: '2026-08-01', departure: '2026-09-01' },
+    );
+    expect(deps.availability.isAvailable).not.toHaveBeenCalled();
+    expect(result.days).toHaveLength(31);
+    expect(result.days[10]).toEqual({ date: '2026-08-11', available: false });
+    expect(Object.keys(result)).toEqual(['propertyId', 'month', 'days', 'checkedAt']);
+    expect(Number.isFinite(Date.parse(result.checkedAt))).toBe(true);
+    await api.getAvailabilityMonth(scope, propertyId, { month: '9998-12' });
+    expect(deps.availability.getNightlyAvailability).toHaveBeenLastCalledWith(scope, propertyId, {
+      arrival: '9998-12-01',
+      departure: '9999-01-01',
+    });
+  });
+
+  it('validates monthly requests and property scope before reading occupancy', async () => {
+    const deps = dependencies();
+    const api = createPublicBookingApi(deps);
+    await expect(
+      api.getAvailabilityMonth(scope, propertyId, { month: '2026-13' }),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(deps.properties.findPublicById).not.toHaveBeenCalled();
+    deps.properties.findPublicById.mockResolvedValue(null);
+    await expect(
+      api.getAvailabilityMonth(scope, propertyId, { month: '2026-08' }),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(deps.availability.getNightlyAvailability).not.toHaveBeenCalled();
+  });
+
   it('serializes property, availability, quote, and request data without private fields', async () => {
     const deps = dependencies();
     const api = createPublicBookingApi(deps);

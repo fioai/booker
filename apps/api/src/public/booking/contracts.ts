@@ -9,11 +9,12 @@ import type {
   PublicApiErrorCodeV1,
   PublicApiErrorResponseV1,
   PublicAvailabilityV1,
+  PublicAvailabilityMonthV1,
   PublicPropertyV1,
   PublicQuoteV1,
   PublicRequestToBookV1,
   PublicValidationIssueV1,
-} from '@booking-engine/sdk-typescript';
+} from '@fiolabs/booking-engine';
 
 export type PublicBookingScope = OrganizationScope;
 
@@ -24,7 +25,7 @@ export type PublicBookingRequestRepository = Pick<
 
 export interface PublicBookingApiDependencies {
   readonly properties: Pick<PropertyRepository, 'findPublicById'>;
-  readonly availability: Pick<AvailabilityRepository, 'isAvailable'>;
+  readonly availability: Pick<AvailabilityRepository, 'isAvailable' | 'getNightlyAvailability'>;
   readonly rates: Pick<RateRepository, 'quote'>;
   readonly bookingRequests: PublicBookingRequestRepository;
 }
@@ -79,6 +80,11 @@ export interface PublicBookingApi {
     propertyId: string,
     input: unknown,
   ): Promise<PublicAvailabilityV1>;
+  getAvailabilityMonth(
+    scope: PublicBookingScope,
+    propertyId: string,
+    input: unknown,
+  ): Promise<PublicAvailabilityMonthV1>;
   getQuote(scope: PublicBookingScope, propertyId: string, input: unknown): Promise<PublicQuoteV1>;
   requestToBook(
     scope: PublicBookingScope,

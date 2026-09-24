@@ -14,7 +14,7 @@ property at CAD 125 per night, with a two-night minimum and no cleaning fee. The
 `sample-bungalow`.
 
 The browser loads the compiled public SDK from `/sdk/index.js`. In an application using the
-packed SDK, import from `@booking-engine/sdk-typescript` instead. Registry installation is not
+packed SDK, import from `@fiolabs/booking-engine` instead. Registry installation is not
 available until publication; the [SDK guide](../../packages/sdk-typescript/README.md) explains the
 local tarball workflow.
 

@@ -220,6 +220,22 @@ describe('workspace manifest dependency validation', () => {
       violations: [],
     });
   });
+
+  it.each(['npm:@fiolabs/booking-engine', 'npm:@fiolabs/booking-engine@^0.1.0'])(
+    'rejects the renamed SDK hidden behind an npm alias: %s',
+    (specifier) => {
+      expect(
+        analyzeRuntimeDependencies('@booking-engine/booking-core', {
+          dependencies: { 'booking-client': specifier },
+        }),
+      ).toEqual({
+        dependencies: [],
+        violations: [
+          `@booking-engine/booking-core dependencies entry booking-client uses internal npm alias "${specifier}"; internal dependencies must use their canonical package name with "workspace:*"`,
+        ],
+      });
+    },
+  );
 });
 
 describe('workspace graph validation', () => {

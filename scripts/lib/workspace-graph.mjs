@@ -4,7 +4,7 @@ export const WORKSPACE_DEPENDENCY_GRAPH = Object.freeze({
     '@booking-engine/channel-ical',
     '@booking-engine/database-postgres',
     '@booking-engine/checkout',
-    '@booking-engine/sdk-typescript',
+    '@fiolabs/booking-engine',
   ]),
   '@booking-engine/booking-core': Object.freeze([]),
   '@booking-engine/channel-ical': Object.freeze([]),
@@ -15,7 +15,7 @@ export const WORKSPACE_DEPENDENCY_GRAPH = Object.freeze({
   ]),
   '@booking-engine/checkout': Object.freeze([]),
   '@booking-engine/stripe': Object.freeze(['@booking-engine/checkout']),
-  '@booking-engine/sdk-typescript': Object.freeze([]),
+  '@fiolabs/booking-engine': Object.freeze([]),
 });
 
 const RUNTIME_DEPENDENCY_FIELDS = Object.freeze([
@@ -40,8 +40,13 @@ function isLocalPathSpecifier(specifier) {
   );
 }
 
-function isInternalNpmAliasSpecifier(specifier) {
-  return specifier.startsWith('npm:@booking-engine/');
+function isInternalNpmAliasSpecifier(specifier, workspacePackageNames) {
+  return (
+    specifier.startsWith('npm:@booking-engine/') ||
+    [...workspacePackageNames].some(
+      (name) => specifier === `npm:${name}` || specifier.startsWith(`npm:${name}@`),
+    )
+  );
 }
 
 /**
@@ -99,7 +104,7 @@ export function analyzeRuntimeWorkspaceDependencies(packageName, manifest, works
               specifier,
             )}; runtime dependencies must use registry specifiers or canonical internal package names with "workspace:*"`,
           );
-        } else if (isInternalNpmAliasSpecifier(specifier)) {
+        } else if (isInternalNpmAliasSpecifier(specifier, workspacePackageNames)) {
           violations.push(
             `${packageName} ${field} entry ${dependency} uses internal npm alias ${JSON.stringify(
               specifier,

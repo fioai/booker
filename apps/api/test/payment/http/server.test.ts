@@ -12,7 +12,10 @@ import {
 
 const publicDependencies: PublicBookingApiDependencies = {
   properties: { findPublicById: vi.fn(async () => null) },
-  availability: { isAvailable: vi.fn(async () => false) },
+  availability: {
+    isAvailable: vi.fn(async () => false),
+    getNightlyAvailability: vi.fn(async () => []),
+  },
   rates: {
     quote: vi.fn(async () => {
       throw new Error('unused');

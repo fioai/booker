@@ -2,6 +2,9 @@ import {
   PublicContractValidationErrorV1,
   PUBLIC_API_VERSION_V1,
   validatePublicAvailabilityRequestV1,
+  validatePublicAvailabilityMonthRequestV1,
+  type PublicAvailabilityMonthRequestV1,
+  type PublicAvailabilityMonthV1,
   validatePublicPropertyIdV1,
   validatePublicRequestToBookV1,
   validatePublicIdempotencyKeyV1,
@@ -59,6 +62,10 @@ export interface BookingEngineClientV1 {
     propertyId: string,
     input: PublicAvailabilityRequestV1,
   ): Promise<PublicAvailabilityV1>;
+  getAvailabilityMonth(
+    propertyId: string,
+    input: PublicAvailabilityMonthRequestV1,
+  ): Promise<PublicAvailabilityMonthV1>;
   getQuote(propertyId: string, input: PublicQuoteRequestV1): Promise<PublicQuoteV1>;
   requestToBook(
     propertyId: string,
@@ -164,6 +171,20 @@ export function createBookingEngineClientV1(
         `${propertyPath(propertyId, 'availability')}?${query.toString()}`,
         undefined,
         PUBLIC_RESPONSE_DECODERS_V1.availability,
+      );
+    },
+    async getAvailabilityMonth(
+      propertyId: string,
+      input: PublicAvailabilityMonthRequestV1,
+    ): Promise<PublicAvailabilityMonthV1> {
+      const result = validatePublicAvailabilityMonthRequestV1(input);
+      if (!result.ok) throw new PublicContractValidationErrorV1(result.errors);
+      const query = new URLSearchParams({ month: result.value.month });
+      return request<PublicAvailabilityMonthV1>(
+        { operation: 'availabilityMonth', propertyId, month: result.value.month },
+        `${propertyPath(propertyId, 'availabilityMonth')}?${query.toString()}`,
+        undefined,
+        PUBLIC_RESPONSE_DECODERS_V1.availabilityMonth,
       );
     },
     async getQuote(propertyId: string, input: PublicQuoteRequestV1): Promise<PublicQuoteV1> {

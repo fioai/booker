@@ -3,7 +3,7 @@ import { isPropertyConfiguration, type PropertyConfiguration } from '@booking-en
 import type {
   PublicBedConfigurationV1,
   PublicPropertyConfigurationV1,
-} from '@booking-engine/sdk-typescript';
+} from '@fiolabs/booking-engine';
 
 /** Explicit outward mapping; domain private fields are never copied into this object. */
 export function serializePublicProperty(

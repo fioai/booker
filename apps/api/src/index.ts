@@ -3,7 +3,7 @@ export {
   PUBLIC_BOOKING_OPENAPI_PATH_V1,
   PUBLIC_BOOKING_OPENAPI_V1,
   PUBLIC_BOOKING_PATHS_V1,
-} from '@booking-engine/sdk-typescript';
+} from '@fiolabs/booking-engine';
 export {
   PublicApiErrorV1,
   PublicBookingApiError,

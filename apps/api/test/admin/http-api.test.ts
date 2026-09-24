@@ -775,7 +775,10 @@ describe('owner admin over the real same-domain HTTP server', () => {
     server = createApiHttpServer(
       {
         properties: { findPublicById: vi.fn(async () => publicProperty) },
-        availability: { isAvailable: vi.fn(async () => true) },
+        availability: {
+          isAvailable: vi.fn(async () => true),
+          getNightlyAvailability: vi.fn(async () => []),
+        },
         rates: { quote: vi.fn(async () => request.quote) },
         bookingRequests: {
           findByIdempotencyKey: vi.fn(async () => null),

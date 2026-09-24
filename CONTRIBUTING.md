@@ -18,7 +18,7 @@ part of an unrelated change.
 ## Package boundaries
 
 This repository is one modular monolith. `apps/api` is the composition and same-origin,
-server-rendered owner-admin surface. `@booking-engine/sdk-typescript` is the only intended public
+server-rendered owner-admin surface. `@fiolabs/booking-engine` is the only intended public
 package in the first release; version `0.1.0` is currently an unpublished release candidate.
 `booking-core`, `database-postgres`, `checkout`, `stripe`, and `channel-ical`
 are private implementation packages. Shared test helpers live with the tests.

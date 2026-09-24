@@ -159,7 +159,7 @@ required. Rewriting history does not replace credential revocation or rotation.
 
 ## External storefront integration
 
-A storefront installs `@booking-engine/sdk-typescript`, creates a V1 client with an API base URL,
+A storefront installs `@fiolabs/booking-engine`, creates a V1 client with an API base URL,
 and calls the four supported operations: public property, availability, quote, and
 request-to-book. It injects browser/Node fetch only when needed. It handles
 `BookingEngineApiErrorV1` by stable code/status and does not depend on repository or admin

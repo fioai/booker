@@ -46,7 +46,17 @@ export interface AvailabilityRecord {
   readonly reason: string | null;
 }
 
+export interface NightlyAvailability {
+  readonly date: string;
+  readonly available: boolean;
+}
+
 export interface AvailabilityRepository {
+  getNightlyAvailability(
+    scope: AvailabilityOrganizationScope,
+    propertyId: string,
+    input: unknown,
+  ): Promise<readonly NightlyAvailability[]>;
   createManualBlock(
     scope: AvailabilityOrganizationScope,
     propertyId: string,
@@ -515,6 +525,42 @@ export class PostgresAvailabilityRepository implements AvailabilityRepository {
         return released;
       }),
     );
+  }
+
+  async getNightlyAvailability(
+    scope: AvailabilityOrganizationScope,
+    propertyId: string,
+    input: unknown,
+  ): Promise<readonly NightlyAvailability[]> {
+    const organizationId = validateScope(scope);
+    const property = validatePropertyId(propertyId);
+    const interval = parseInterval(input);
+    if (interval.nights > 31)
+      throw new PersistenceError('invalid_stay', 'Nightly availability is limited to 31 nights.');
+    await this.database.withTransaction((transaction) =>
+      requireProperty(transaction, this.propertiesTable, organizationId, property),
+    );
+    // Read both sources in one statement/snapshot and expand only the bounded month.
+    // Active holds retain the same semantics as isAvailable until explicitly released.
+    const result = await this.database.query<{ date: string; available: boolean }>(
+      `
+        WITH blocked AS MATERIALIZED (
+          SELECT stay FROM ${this.blocksTable}
+          WHERE organization_id = $1 AND property_id = $2 AND status = 'active'
+            AND stay && daterange($3::date, $4::date, '[)')
+          UNION ALL
+          SELECT daterange(arrival, departure, '[)') AS stay FROM ${this.icalBlocksTable}
+          WHERE organization_id = $1 AND property_id = $2 AND status = 'active'
+            AND daterange(arrival, departure, '[)') && daterange($3::date, $4::date, '[)')
+        )
+        SELECT to_char($3::date + day_offset, 'YYYY-MM-DD') AS date,
+          NOT EXISTS (SELECT 1 FROM blocked WHERE stay @> ($3::date + day_offset)) AS available
+        FROM generate_series(0, ($4::date - $3::date) - 1) AS day_offset
+        ORDER BY day_offset
+      `,
+      [organizationId, property, interval.arrival, interval.departure],
+    );
+    return result.rows.map((row) => ({ date: row.date, available: row.available }));
   }
 
   async isAvailable(

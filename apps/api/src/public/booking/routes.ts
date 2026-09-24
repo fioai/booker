@@ -1,7 +1,4 @@
-import {
-  PUBLIC_BOOKING_PATHS_V1,
-  type PublicBookingOperationKeyV1,
-} from '@booking-engine/sdk-typescript';
+import { PUBLIC_BOOKING_PATHS_V1, type PublicBookingOperationKeyV1 } from '@fiolabs/booking-engine';
 
 export type PublicBookingRoute =
   | {

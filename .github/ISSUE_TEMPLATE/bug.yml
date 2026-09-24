@@ -14,7 +14,7 @@ body:
     attributes:
       label: Version
       description: Give the exact SDK or runtime version, commit, or tag under test.
-      placeholder: '@booking-engine/sdk-typescript 0.1.0'
+      placeholder: '@fiolabs/booking-engine 0.1.0'
     validations:
       required: true
   - type: dropdown

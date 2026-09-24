@@ -19,6 +19,7 @@ import {
 import { PUBLIC_BOOKING_CONTRACT_MANIFEST_V1 } from './manifest.js';
 import {
   PUBLIC_BOOKING_LIMITS_V1,
+  PUBLIC_CALENDAR_MONTH_PATTERN_V1,
   type PublicApiVersionV1,
   type PublicApiErrorCodeV1,
   type PublicPropertyV1,
@@ -28,6 +29,7 @@ import {
 export const PUBLIC_BOOKING_PATHS_V1 = Object.freeze({
   property: PUBLIC_BOOKING_CONTRACT_MANIFEST_V1.operations.property.path,
   availability: PUBLIC_BOOKING_CONTRACT_MANIFEST_V1.operations.availability.path,
+  availabilityMonth: PUBLIC_BOOKING_CONTRACT_MANIFEST_V1.operations.availabilityMonth.path,
   quote: PUBLIC_BOOKING_CONTRACT_MANIFEST_V1.operations.quote.path,
   requestToBook: PUBLIC_BOOKING_CONTRACT_MANIFEST_V1.operations.requestToBook.path,
 });
@@ -159,6 +161,43 @@ const availabilitySchema = {
     available: { type: 'boolean' },
   },
 } as const satisfies Record<string, unknown>;
+
+const monthSchema = {
+  type: 'string',
+  pattern: PUBLIC_CALENDAR_MONTH_PATTERN_V1,
+  minLength: 7,
+  maxLength: 7,
+} as const;
+const availabilityMonthRequestSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: PUBLIC_BOOKING_CONTRACT_MANIFEST_V1.schemas.PublicAvailabilityMonthRequestV1.required,
+  properties: { month: monthSchema },
+} as const;
+const availabilityNightSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: PUBLIC_BOOKING_CONTRACT_MANIFEST_V1.schemas.PublicAvailabilityNightV1.required,
+  properties: { date: { type: 'string', format: 'date' }, available: { type: 'boolean' } },
+} as const;
+const availabilityMonthSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: PUBLIC_BOOKING_CONTRACT_MANIFEST_V1.schemas.PublicAvailabilityMonthV1.required,
+  properties: {
+    propertyId: identifierSchema,
+    month: monthSchema,
+    days: {
+      type: 'array',
+      minItems: 28,
+      maxItems: 31,
+      items: { $ref: '#/components/schemas/PublicAvailabilityNightV1' },
+      description:
+        'Every night in the requested property-local month, ordered by date. Each flag covers [date, next date). No guest or booking details.',
+    },
+    checkedAt: { type: 'string', format: 'date-time' },
+  },
+} as const;
 
 const quoteSchema = {
   type: 'object',
@@ -375,6 +414,41 @@ export const PUBLIC_BOOKING_OPENAPI_V1: PublicOpenApiDocumentV1 = deepFreezeV1({
         },
       },
     },
+    [PUBLIC_BOOKING_PATHS_V1.availabilityMonth]: {
+      get: {
+        operationId: PUBLIC_BOOKING_CONTRACT_MANIFEST_V1.operations.availabilityMonth.operationId,
+        parameters: [
+          { $ref: '#/components/parameters/PropertyId' },
+          { name: 'month', in: 'query', required: true, schema: monthSchema },
+        ],
+        responses: {
+          '200': {
+            description:
+              'Nightly inventory for one property-local calendar month. This snapshot does not reserve dates or validate rate and minimum-stay rules.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/PublicAvailabilityMonthV1' },
+              },
+            },
+          },
+          '400': errorResponse(
+            'Invalid calendar month (validation_failed).',
+            PUBLIC_BOOKING_CONTRACT_MANIFEST_V1.operations.availabilityMonth
+              .errorCodesByStatus[400],
+          ),
+          '404': errorResponse(
+            'Property not found (property_not_found).',
+            PUBLIC_BOOKING_CONTRACT_MANIFEST_V1.operations.availabilityMonth
+              .errorCodesByStatus[404],
+          ),
+          '500': errorResponse(
+            'Internal server error (internal_error).',
+            PUBLIC_BOOKING_CONTRACT_MANIFEST_V1.operations.availabilityMonth
+              .errorCodesByStatus[500],
+          ),
+        },
+      },
+    },
     [PUBLIC_BOOKING_PATHS_V1.quote]: {
       post: {
         operationId: PUBLIC_BOOKING_CONTRACT_MANIFEST_V1.operations.quote.operationId,
@@ -492,6 +566,9 @@ export const PUBLIC_BOOKING_OPENAPI_V1: PublicOpenApiDocumentV1 = deepFreezeV1({
         },
       },
       PublicAvailabilityV1: availabilitySchema,
+      PublicAvailabilityMonthRequestV1: availabilityMonthRequestSchema,
+      PublicAvailabilityNightV1: availabilityNightSchema,
+      PublicAvailabilityMonthV1: availabilityMonthSchema,
       PublicQuoteV1: quoteSchema,
       PublicRequestToBookInputV1: requestInputSchema,
       PublicRequestToBookV1: requestResponseSchema,

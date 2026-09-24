@@ -1,0 +1,162 @@
+name: Publish npm package
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Dry run, publish with npm trusted publishing, or bootstrap the first release
+        type: choice
+        required: true
+        default: dry-run
+        options:
+          - dry-run
+          - publish
+          - bootstrap
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: 22.23.1
+  PNPM_VERSION: 10.12.1
+  NPM_VERSION: 11.17.0
+
+jobs:
+  release:
+    name: Check release metadata
+    if: github.repository == 'fioai/booker'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Validate package and release tag
+        env:
+          RELEASE_MODE: ${{ inputs.mode }}
+        run: |
+          case "$RELEASE_MODE" in
+            dry-run|publish|bootstrap) ;;
+            *) exit 1 ;;
+          esac
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            test "$(git cat-file -t "$GITHUB_REF")" = tag
+            test "$(git rev-parse "$GITHUB_REF^{commit}")" = "$GITHUB_SHA"
+            git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+          elif [ "$RELEASE_MODE" != dry-run ]; then
+            echo 'Publishing requires an annotated v<version> tag on main.' >&2
+            exit 1
+          fi
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          const manifest = JSON.parse(readFileSync('packages/sdk-typescript/package.json', 'utf8'));
+          assert.equal(manifest.name, '@fiolabs/booking-engine');
+          assert.match(manifest.version, /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/);
+          assert.notEqual(manifest.private, true);
+          assert.equal(manifest.publishConfig.access, 'public');
+          assert.equal(manifest.publishConfig.registry, 'https://registry.npmjs.org/');
+          assert.equal(manifest.repository.url, 'git+https://github.com/fioai/booker.git');
+          if (process.env.GITHUB_REF_TYPE === 'tag') {
+            assert.equal(process.env.GITHUB_REF_NAME, `v${manifest.version}`);
+          }
+          const changelog = readFileSync('CHANGELOG.md', 'utf8');
+          assert(changelog.split('\n').some(line => line.startsWith(`## ${manifest.version} - `)),
+            'Add a dated changelog entry for this package version.');
+          NODE
+          git diff-tree --check "$GITHUB_SHA"
+
+  gates:
+    name: Release gates
+    needs: release
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    name: Pack and publish SDK
+    needs: gates
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: https://registry.npmjs.org
+      - run: npm install --global "npm@$NPM_VERSION" --ignore-scripts
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm check:sdk-package
+      - name: Pack and preview the release
+        run: |
+          mkdir -p "$RUNNER_TEMP/npm-release"
+          pnpm --dir packages/sdk-typescript pack --pack-destination "$RUNNER_TEMP/npm-release"
+          npm publish "$RUNNER_TEMP/npm-release/"*.tgz --dry-run --access public --ignore-scripts
+      - name: Retain the reviewed package
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-package-${{ github.run_id }}
+          path: ${{ runner.temp }}/npm-release/*.tgz
+          if-no-files-found: error
+          retention-days: 30
+      - name: Publish with npm trusted publishing
+        if: inputs.mode == 'publish'
+        run: npm publish "$RUNNER_TEMP/npm-release/"*.tgz --access public --provenance --ignore-scripts
+      - name: Publish the first release with a bootstrap token
+        if: inputs.mode == 'bootstrap'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_BOOTSTRAP_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo 'Set the NPM_BOOTSTRAP_TOKEN Actions secret for the first release.' >&2
+            exit 1
+          fi
+          npm publish "$RUNNER_TEMP/npm-release/"*.tgz --access public --provenance --ignore-scripts
+      - name: Verify the published version, archive, and provenance
+        if: inputs.mode != 'dry-run'
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { createHash } from 'node:crypto';
+          import { readFileSync, readdirSync } from 'node:fs';
+          import { join } from 'node:path';
+          import { setTimeout } from 'node:timers/promises';
+          const { name, version } = JSON.parse(readFileSync('packages/sdk-typescript/package.json', 'utf8'));
+          const directory = join(process.env.RUNNER_TEMP, 'npm-release');
+          const archives = readdirSync(directory).filter(file => file.endsWith('.tgz'));
+          assert.equal(archives.length, 1);
+          const integrity = 'sha512-' + createHash('sha512').update(readFileSync(join(directory, archives[0]))).digest('base64');
+          for (let attempt = 0; attempt < 6; attempt++) {
+            try {
+              const response = await fetch(`https://registry.npmjs.org/${encodeURIComponent(name)}/${version}`, {
+                signal: AbortSignal.timeout(10000),
+              });
+              assert.equal(response.status, 200);
+              const published = await response.json();
+              assert.equal(published.name, name);
+              assert.equal(published.version, version);
+              assert.equal(published.dist.integrity, integrity);
+              assert(published.dist.attestations?.url, 'Registry provenance attestations are missing.');
+              assert(published.dist.attestations?.provenance, 'Registry provenance is missing.');
+              console.log(`Verified ${name}@${version}: archive integrity and provenance.`);
+              break;
+            } catch (error) {
+              if (attempt === 5) throw error;
+              await setTimeout(5000);
+            }
+          }
+          NODE

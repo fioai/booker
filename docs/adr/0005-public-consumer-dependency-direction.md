@@ -10,7 +10,7 @@
 ## Decision
 
 External storefronts depend on the versioned public HTTP contract through
-`@booking-engine/sdk-typescript`. They must not import engine internals, query PostgreSQL
+`@fiolabs/booking-engine`. They must not import engine internals, query PostgreSQL
 tables, or depend on private server modules. `apps/api` may compose internal domain,
 persistence, calendar, and payment packages.
 
